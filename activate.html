@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel - Golf Clash</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* Login Screen */
+        .login-screen { 
+            max-width: 400px; 
+            margin: 100px auto; 
+            background: white; 
+            padding: 40px; 
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .login-screen input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .login-screen button {
+            width: 100%;
+            padding: 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .login-screen button:hover { background: #218838; }
+        
+        /* Admin Panel */
+        .admin-panel { display: none; }
+        .header { 
+            background: #333; 
+            color: white; 
+            padding: 20px; 
+            border-radius: 10px 10px 0 0;
+            margin-bottom: 20px;
+        }
+        .tabs { 
+            display: flex; 
+            gap: 10px; 
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            flex-wrap: wrap;
+        }
+        .tabs button {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            min-width: 120px;
+        }
+        .tabs button.active { background: #007bff; }
+        .tabs button:hover { background: #0056b3; }
+        
+        .tab-content { 
+            display: none;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-content.active { display: block; }
+        
+        /* Forms */
+        .form-group { margin: 15px 0; }
+        .form-group label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        tr:hover { background: #f8f9fa; }
+        
+        /* Messages */
+        .message {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        
+        /* Direct Link Box */
+        .direct-link {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            word-break: break-all;
+        }
+        .direct-link a {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .direct-link a:hover { text-decoration: underline; }
+        
+        @media (max-width: 768px) {
+            .container { padding: 10px; }
+            .tabs { flex-direction: column; }
+            .tabs button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <h2>🔐 Admin Login</h2>
+        <p style="color: #666; margin-bottom: 20px;">Enter admin password</p>
+        <input type="password" id="adminPassword" placeholder="Enter password">
+        <button onclick="login()">Login</button>
+        <p id="loginError" style="color: #dc3545; margin-top: 10px; display: none;">❌ Wrong password!</p>
+        <p style="margin-top: 20px; font-size: 12px; color: #666;">
+            Password: <code>Admin123</code>
+        </p>
+    </div>
+    
+    <!-- Admin Panel -->
+    <div id="adminPanel" class="admin-panel container">
+        <div class="header">
+            <h1 style="margin: 0;">🏌️ Golf Clash License Manager</h1>
+            <p style="margin: 5px 0 0; color: #ccc;">Manual GitHub Management System</p>
+        </div>
+        
+        <div class="tabs">
+            <button onclick="showTab('dashboard')" class="active">📊 Dashboard</button>
+            <button onclick="showTab('add')">➕ Add License</button>
+            <button onclick="showTab('edit')">✏️ Edit License</button>
+            <button onclick="showTab('view')">📋 View All</button>
+            <button onclick="logout()" style="background: #dc3545;">🚪 Logout</button>
+        </div>
+        
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <h2>📊 Dashboard</h2>
+            <div class="message info">
+                <p><strong>⚠️ IMPORTANT:</strong> GitHub Pages is READ-ONLY</p>
+                <p>To add/edit licenses:</p>
+                <ol>
+                    <li>Use "Add License" tab to generate JSON</li>
+                    <li>Click the generated GitHub link</li>
+                    <li>Paste JSON and click "Commit changes"</li>
+                    <li>Wait 1 minute for update</li>
+                </ol>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button class="btn btn-success" onclick="showTab('add')">➕ Add New License</button>
+                <button class="btn btn-primary" onclick="showTab('view')">📋 View Existing Licenses</button>
+            </div>
+            
+            <div style="margin-top: 30px; background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                <h4>📱 License Check URLs</h4>
+                <p>For users: <code>https://kannanhari-debug.github.io/golf-licenses/?device_id=DEVICE_ID</code></p>
+                <p>Example: <a href="https://kannanhari-debug.github.io/golf-licenses/?device_id=739414467890316" target="_blank">Test License</a></p>
+            </div>
+        </div>
+        
+        <!-- Add License Tab -->
+        <div id="add" class="tab-content">
+            <h2>➕ Add New License</h2>
+            
+            <div class="form-group">
+                <label>Device ID (15 digits):</label>
+                <input type="text" id="deviceId" placeholder="Enter 15-digit Device ID from user">
+            </div>
+            
+            <div class="form-group">
+                <label>Customer Username:</label>
+                <input type="text" id="username" placeholder="Enter customer name">
+            </div>
+            
+            <div class="form-group">
+                <label>License Level:</label>
+                <select id="licenseLevel">
+                    <option value="1">Lite (Level 1)</option>
+                    <option value="2">Premium (Level 2)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Expiry Date:</label>
+                <input type="date" id="expiryDate">
+            </div>
+            
+            <button class="btn btn-success" onclick="generateLicense()">📄 Generate License JSON</button>
+            
+            <div id="addResult" class="message" style="display: none;"></div>
+        </div>
+        
+        <!-- Edit License Tab -->
+        <div id="edit" class="tab-content">
+            <h2>✏️ Edit Existing License</h2>
+            
+            <div class="form-group">
+                <label>Enter Device ID to Edit:</label>
+                <input type="text" id="editDeviceId" placeholder="Enter Device ID to edit">
+                <button class="btn btn-primary" onclick="fetchLicense()" style="margin-top: 10px;">🔍 Fetch License</button>
+            </div>
+            
+            <div id="editForm" style="display: none;">
+                <div class="form-group">
+                    <label>Customer Username:</label>
+                    <input type="text" id="editUsername">
+                </div>
+                
+                <div class="form-group">
+                    <label>License Level:</label>
+                    <select id="editLevel">
+                        <option value="1">Lite</option>
+                        <option value="2">Premium</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Expiry Date:</label>
+                    <input type="date" id="editExpiryDate">
+                </div>
+                
+                <button class="btn btn-success" onclick="generateEditLicense()">📄 Generate Updated JSON</button>
+            </div>
+            
+            <div id="editResult" class="message" style="display: none;"></div>
+        </div>
+        
+        <!-- View All Tab -->
+        <div id="view" class="tab-content">
+            <h2>📋 View All Licenses</h2>
+            <button class="btn btn-primary" onclick="fetchAllLicenses()">🔄 Refresh License List</button>
+            
+            <div id="licenseList" style="margin-top: 20px;">
+                <div class="message info">
+                    Click "Refresh License List" to load licenses from GitHub
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const ADMIN_PASSWORD = "Admin123";
+        const GITHUB_RAW = "https://raw.githubusercontent.com/kannanhari-debug/golf-licenses/main/licenses";
+        const GITHUB_NEW = "https://github.com/kannanhari-debug/golf-licenses/new/main";
+        
+        // ========== LOGIN FUNCTIONS ==========
+        function login() {
+            const password = document.getElementById('adminPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+                
+                // Set default expiry to 30 days from now
+                const futureDate = new Date();
+                futureDate.setDate(futureDate.getDate() + 30);
+                document.getElementById('expiryDate').value = futureDate.toISOString().split('T')[0];
+                document.getElementById('editExpiryDate').value = futureDate.toISOString().split('T')[0];
+            } else {
+                errorDiv.style.display = 'block';
+                document.getElementById('adminPassword').value = '';
+            }
+        }
+        
+        function logout() {
+            if (confirm('Logout from admin panel?')) {
+                document.getElementById('loginScreen').style.display = 'block';
+                document.getElementById('adminPanel').style.display = 'none';
+                document.getElementById('adminPassword').value = '';
+                document.getElementById('loginError').style.display = 'none';
+            }
+        }
+        
+        // ========== ADD LICENSE FUNCTIONS ==========
+        function generateLicense() {
+            const deviceId = document.getElementById('deviceId').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const level = parseInt(document.getElementById('licenseLevel').value);
+            const expiryDate = document.getElementById('expiryDate').value;
+            
+            // Validation
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                showMessage('addResult', '❌ Device ID must be exactly 15 digits', 'error');
+                return;
+            }
+            
+            if (!username) {
+                showMessage('addResult', '❌ Please enter customer username', 'error');
+                return;
+            }
+            
+            if (!expiryDate) {
+                showMessage('addResult', '❌ Please select expiry date', 'error');
+                return;
+            }
+            
+            // Create license data
+            const licenseData = {
+                device_id: deviceId,
+                username: username,
+                level: level,
+                expiry_date: expiryDate,
+                created: new Date().toISOString().split('T')[0],
+                status: 'active'
+            };
+            
+            const jsonContent = JSON.stringify(licenseData, null, 2);
+            const encodedJson = encodeURIComponent(jsonContent);
+            
+            // Create GitHub direct link
+            const githubUrl = `${GITHUB_NEW}?filename=licenses/${deviceId}.json&value=${encodedJson}`;
+            
+            // Show result
+            const resultHtml = `
+                <div class="direct-link">
+                    <p><strong>✅ License JSON Generated!</strong></p>
+                    <p><strong>📎 Click this link to create file on GitHub:</strong></p>
+                    <p><a href="${githubUrl}" target="_blank">${githubUrl}</a></p>
+                    <p><strong>📋 Or copy this JSON manually:</strong></p>
+                    <textarea style="width: 100%; height: 200px; font-family: monospace; margin-top: 10px; padding: 10px;" readonly>${jsonContent}</textarea>
+                    <p style="margin-top: 10px; font-size: 12px; color: #666;">
+                        Instructions: Click the link above → Paste JSON → Click "Commit changes" → Wait 1 minute
+                    </p>
+                </div>
+            `;
+            
+            document.getElementById('addResult').innerHTML = resultHtml;
+            document.getElementById('addResult').className = 'message success';
+            document.getElementById('addResult').style.display = 'block';
+            
+            // Clear form
+            document.getElementById('deviceId').value = '';
+            document.getElementById('username').value = '';
+        }
+        
+        // ========== EDIT LICENSE FUNCTIONS ==========
+        async function fetchLicense() {
+            const deviceId = document.getElementById('editDeviceId').value.trim();
+            
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                showMessage('editResult', '❌ Enter a valid 15-digit Device ID', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${GITHUB_RAW}/${deviceId}.json`);
+                
+                if (response.status === 404) {
+                    showMessage('editResult', '❌ No license found with this Device ID', 'error');
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Server error: ' + response.status);
+                }
+                
+                const license = await response.json();
+                
+                // Fill edit form
+                document.getElementById('editUsername').value = license.username;
+                document.getElementById('editLevel').value = license.level.toString();
+                document.getElementById('editExpiryDate').value = license.expiry_date;
+                
+                // Show edit form
+                document.getElementById('editForm').style.display = 'block';
+                document.getElementById('editResult').style.display = 'none';
+                
+            } catch (error) {
+                showMessage('editResult', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+        
+        function generateEditLicense() {
+            const deviceId = document.getElementById('editDeviceId').value.trim();
+            const username = document.getElementById('editUsername').value.trim();
+            const level = parseInt(document.getElementById('editLevel').value);
+            const expiryDate = document.getElementById('editExpiryDate').value;
+            
+            // Validation
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                showMessage('editResult', '❌ Device ID must be exactly 15 digits', 'error');
+                return;
+            }
+            
+            if (!username) {
+                showMessage('editResult', '❌ Please enter customer username', 'error');
+                return;
+            }
+            
+            if (!expiryDate) {
+                showMessage('editResult', '❌ Please select expiry date', 'error');
+                return;
+            }
+            
+            // Create updated license data
+            const licenseData = {
+                device_id: deviceId,
+                username: username,
+                level: level,
+                expiry_date: expiryDate,
+                created: new Date().toISOString().split('T')[0], // Update creation date
+                status: 'active'
+            };
+            
+            const jsonContent = JSON.stringify(licenseData, null, 2);
+            const encodedJson = encodeURIComponent(jsonContent);
+            
+            // Create GitHub direct link for edit (will overwrite)
+            const githubUrl = `${GITHUB_NEW}?filename=licenses/${deviceId}.json&value=${encodedJson}`;
+            
+            // Show result
+            const resultHtml = `
+                <div class="direct-link">
+                    <p><strong>✅ Updated License JSON Generated!</strong></p>
+                    <p><strong>⚠️ This will REPLACE the existing license file</strong></p>
+                    <p><strong>📎 Click this link to update on GitHub:</strong></p>
+                    <p><a href="${githubUrl}" target="_blank">${githubUrl}</a></p>
+                    <p><strong>📋 Or copy this JSON manually:</strong></p>
+                    <textarea style="width: 100%; height: 200px; font-family: monospace; margin-top: 10px; padding: 10px;" readonly>${jsonContent}</textarea>
+                    <p style="margin-top: 10px; font-size: 12px; color: #666;">
+                        Instructions: Click the link above → Paste JSON → Click "Commit changes" → Wait 1 minute
+                    </p>
+                </div>
+            `;
+            
+            document.getElementById('editResult').innerHTML = resultHtml;
+            document.getElementById('editResult').className = 'message success';
+            document.getElementById('editResult').style.display = 'block';
+        }
+        
+        // ========== VIEW LICENSES FUNCTIONS ==========
+        async function fetchAllLicenses() {
+            const licenseList = document.getElementById('licenseList');
+            licenseList.innerHTML = '<div class="message info">🔄 Loading licenses from GitHub...</div>';
+            
+            try {
+                // Try to fetch licenses folder contents via GitHub API
+                const apiUrl = 'https://api.github.com/repos/kannanhari-debug/golf-licenses/contents/licenses';
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        licenseList.innerHTML = '<div class="message warning">📁 No license files found yet</div>';
+                        return;
+                    }
+                    throw new Error('GitHub API error: ' + response.status);
+                }
+                
+                const files = await response.json();
+                const jsonFiles = files.filter(file => file.name.endsWith('.json'));
+                
+                if (jsonFiles.length === 0) {
+                    licenseList.innerHTML = '<div class="message warning">📁 No license files found</div>';
+                    return;
+                }
+                
+                // Create table
+                let tableHtml = `
+                    <table>
+                        <tr>
+                            <th>Device ID</th>
+                            <th>Username</th>
+                            <th>Level</th>
+                            <th>Expiry</th>
+                            <th>Test</th>
+                            <th>Actions</th>
+                        </tr>
+                `;
+                
+                // Fetch a few licenses to display
+                const sampleCount = Math.min(jsonFiles.length, 10);
+                for (let i = 0; i < sampleCount; i++) {
+                    const file = jsonFiles[i];
+                    try {
+                        const fileResponse = await fetch(GITHUB_RAW + '/' + file.name);
+                        if (fileResponse.ok) {
+                            const license = await fileResponse.json();
+                            const testUrl = `https://kannanhari-debug.github.io/golf-licenses/?device_id=${license.device_id}`;
+                            const editUrl = `javascript:loadToEdit('${license.device_id}')`;
+                            
+                            tableHtml += `
+                                <tr>
+                                    <td><code>${license.device_id}</code></td>
+                                    <td>${license.username}</td>
+                                    <td>${license.level === 1 ? 'Lite' : 'Premium'}</td>
+                                    <td>${license.expiry_date}</td>
+                                    <td><a href="${testUrl}" target="_blank">🔗 Test</a></td>
+                                    <td><button class="btn btn-primary" onclick="loadToEdit('${license.device_id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Edit</button></td>
+                                </tr>
+                            `;
+                        }
+                    } catch (error) {
+                        console.error('Error loading file:', file.name, error);
+                    }
+                }
+                
+                tableHtml += '</table>';
+                
+                if (jsonFiles.length > 10) {
+                    tableHtml += `<p style="color: #666; margin-top: 10px;">Showing 10 of ${jsonFiles.length} licenses. View all on <a href="https://github.com/kannanhari-debug/golf-licenses/tree/main/licenses" target="_blank">GitHub</a></p>`;
+                }
+                
+                licenseList.innerHTML = tableHtml;
+                
+            } catch (error) {
+                licenseList.innerHTML = `
+                    <div class="message error">
+                        ❌ Error loading licenses: ${error.message}
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <p>View licenses directly on GitHub:</p>
+                        <p><a href="https://github.com/kannanhari-debug/golf-licenses/tree/main/licenses" target="_blank">📁 GitHub Licenses Folder</a></p>
+                    </div>
+                `;
+            }
+        }
+        
+        function loadToEdit(deviceId) {
+            document.getElementById('editDeviceId').value = deviceId;
+            showTab('edit');
+            fetchLicense();
+        }
+        
+        // ========== HELPER FUNCTIONS ==========
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.tabs button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        function showMessage(elementId, text, type) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = text;
+            element.className = `message ${type}`;
+            element.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
