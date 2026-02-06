@@ -3,7 +3,7 @@
 header('Access-Control-Allow-Origin: *');
 header('Content-Type: application/json');
 
-$github_token = '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';
+$github_token = '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';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
