@@ -11,7 +11,7 @@
     ]
   },
   "739414467890316": {
-    "count": 5,
+    "count": 6,
     "total_time": 0,
     "sessions": [
       {
@@ -37,6 +37,11 @@
       {
         "action": "login",
         "timestamp": "2026-02-06T20:33:41.606Z",
+        "duration": 0
+      },
+      {
+        "action": "login",
+        "timestamp": "2026-02-06T20:34:59.929Z",
         "duration": 0
       }
     ]
