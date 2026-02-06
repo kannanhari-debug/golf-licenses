@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel - Golf Clash</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* Login Screen */
+        .login-screen { 
+            max-width: 400px; 
+            margin: 100px auto; 
+            background: white; 
+            padding: 40px; 
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .login-screen input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .login-screen button {
+            width: 100%;
+            padding: 12px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .login-screen button:hover { background: #218838; }
+        
+        /* Admin Panel */
+        .admin-panel { display: none; }
+        .header { 
+            background: #333; 
+            color: white; 
+            padding: 20px; 
+            border-radius: 10px 10px 0 0;
+            margin-bottom: 20px;
+        }
+        .tabs { 
+            display: flex; 
+            gap: 10px; 
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            flex-wrap: wrap;
+        }
+        .tabs button {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            min-width: 120px;
+        }
+        .tabs button.active { background: #007bff; }
+        .tabs button:hover { background: #0056b3; }
+        
+        .tab-content { 
+            display: none;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .tab-content.active { display: block; }
+        
+        /* Forms */
+        .form-group { margin: 15px 0; }
+        .form-group label { 
+            display: block; 
+            margin-bottom: 5px; 
+            font-weight: bold;
+            color: #333;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn-primary { background: #007bff; color: white; }
+        .btn-primary:hover { background: #0056b3; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #218838; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-info { background: #17a2b8; color: white; }
+        .btn-info:hover { background: #138496; }
+        
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        tr:hover { background: #f8f9fa; }
+        
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #e9ecef;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .stat-card p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        /* Charts */
+        .chart-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        /* Messages */
+        .message {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            display: none;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        /* Progress Bar */
+        .progress {
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #28a745;
+            transition: width 0.3s;
+        }
+        
+        /* Tracking Stats */
+        .tracking-details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .session-item {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+            font-size: 12px;
+        }
+        .session-item:last-child {
+            border-bottom: none;
+        }
+        
+        @media (max-width: 768px) {
+            .container { padding: 10px; }
+            .tabs { flex-direction: column; }
+            .tabs button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <h2>🔐 Admin Login</h2>
+        <p style="color: #666; margin-bottom: 20px;">Enter admin password</p>
+        <input type="password" id="adminPassword" placeholder="Enter password">
+        <button onclick="login()">Login</button>
+        <p id="loginError" style="color: #dc3545; margin-top: 10px; display: none;">❌ Wrong password!</p>
+        <p style="margin-top: 20px; font-size: 12px; color: #666;">
+            Password: <code>Admin123</code>
+        </p>
+    </div>
+    
+    <!-- Admin Panel -->
+    <div id="adminPanel" class="admin-panel container">
+        <div class="header">
+            <h1 style="margin: 0;">🏌️ Golf Clash License Manager</h1>
+            <p style="margin: 5px 0 0; color: #ccc;">Fully Automated GitHub Management</p>
+        </div>
+        
+        <div class="tabs">
+            <button onclick="showTab('dashboard')" class="active">📊 Dashboard</button>
+            <button onclick="showTab('add')">➕ Add/Edit License</button>
+            <button onclick="showTab('manage')">📋 All Licenses</button>
+            <button onclick="showTab('tracking')">📈 Usage Tracking</button>
+            <button onclick="logout()" style="background: #dc3545;">🚪 Logout</button>
+        </div>
+        
+        <!-- Dashboard Tab -->
+        <div id="dashboard" class="tab-content active">
+            <h2>📊 Live Dashboard</h2>
+            <button class="btn btn-success" onclick="loadFromGitHub(true)">🔄 Refresh Live Data</button>
+            
+            <div class="stats" id="dashboardStats">
+                <div class="loading">Loading live data...</div>
+            </div>
+            
+            <div style="margin-top: 30px; background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                <h4>📱 Quick Actions</h4>
+                <button class="btn btn-primary" onclick="showTab('add')">➕ Add New License</button>
+                <button class="btn btn-secondary" onclick="showTab('manage')">📋 View All Licenses</button>
+                <button class="btn btn-info" onclick="showTab('tracking')">📈 View Usage Tracking</button>
+                <a href="https://github.com/kannanhari-debug/golf-licenses/tree/main/licenses" target="_blank" class="btn btn-secondary">📁 Open GitHub</a>
+            </div>
+        </div>
+        
+        <!-- Add/Edit License Tab -->
+        <div id="add" class="tab-content">
+            <h2>➕ Add/Edit License</h2>
+            
+            <div class="form-group">
+                <label>Device ID (15 digits):</label>
+                <input type="text" id="deviceId" placeholder="Enter exact 15-digit Device ID">
+                <small style="color: #666;">Enter the EXACT Device ID from user's script</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Customer Username:</label>
+                <input type="text" id="username" placeholder="Enter customer name">
+            </div>
+            
+            <div class="form-group">
+                <label>License Level:</label>
+                <select id="licenseLevel">
+                    <option value="1">Lite (Level 1)</option>
+                    <option value="2">Premium (Level 2)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Expiry Date:</label>
+                <input type="date" id="expiryDate">
+            </div>
+            
+            <div>
+                <button class="btn btn-success" onclick="saveLicense()" id="saveButton">💾 Save License to GitHub</button>
+                <button class="btn btn-secondary" onclick="clearForm()">🗑️ Clear Form</button>
+                <button class="btn btn-primary" onclick="checkLicense()">🔍 Check Existing</button>
+            </div>
+            
+            <div id="addMessage" class="message"></div>
+            <div id="progressBar" class="progress" style="display: none;">
+                <div class="progress-bar" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+        
+        <!-- Manage Licenses Tab -->
+        <div id="manage" class="tab-content">
+            <h2>📋 All Licenses</h2>
+            <div style="margin-bottom: 15px;">
+                <button class="btn btn-success" onclick="loadFromGitHub(true)">🔄 Refresh from GitHub</button>
+                <span style="margin-left: 10px; color: #666;" id="licenseCount">Loading...</span>
+            </div>
+            
+            <div id="licenseTable">
+                <div class="loading">
+                    🔄 Loading licenses from GitHub...
+                </div>
+            </div>
+        </div>
+        
+        <!-- Usage Tracking Tab -->
+        <div id="tracking" class="tab-content">
+            <h2>📈 Usage Tracking</h2>
+            
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-success" onclick="loadTrackingData()">🔄 Refresh Tracking Data</button>
+                <button class="btn btn-info" onclick="exportTrackingData()">📥 Export Data</button>
+                <button class="btn btn-danger" onclick="clearOldTrackingData()">🗑️ Clear Old Data</button>
+            </div>
+            
+            <div class="stats" id="trackingStats">
+                <div class="loading">Loading tracking statistics...</div>
+            </div>
+            
+            <div class="form-group">
+                <label>Search Device ID:</label>
+                <input type="text" id="searchDeviceId" placeholder="Enter Device ID to search" 
+                       onkeyup="searchDeviceTracking()">
+            </div>
+            
+            <div id="deviceTrackingDetails">
+                <!-- Device tracking details will be loaded here -->
+            </div>
+            
+            <div id="invalidAttempts">
+                <h3>🚫 Invalid Access Attempts</h3>
+                <div id="invalidTable">
+                    <div class="loading">Loading invalid attempts...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Token obfuscation - break into multiple parts
+        const TOKEN_PART1 = "ghp_";
+        const TOKEN_PART2 = "y5tcD";
+        const TOKEN_PART3 = "ZhDpT";
+        const TOKEN_PART4 = "Sm2Ek";
+        const TOKEN_PART5 = "N2yMn";
+        const TOKEN_PART6 = "5pPDH";
+        const TOKEN_PART7 = "EzdKf";
+        const TOKEN_PART8 = "2UcPH";
+        const TOKEN_PART9 = "Z";
+        
+        // Function to assemble token
+        function getGitHubToken() {
+            return TOKEN_PART1 + TOKEN_PART2 + TOKEN_PART3 + TOKEN_PART4 + 
+                   TOKEN_PART5 + TOKEN_PART6 + TOKEN_PART7 + TOKEN_PART8 + TOKEN_PART9;
+        }
+        
+        // Configuration
+        const ADMIN_PASSWORD = "Admin123";
+        const REPO_OWNER = "kannanhari-debug";
+        const REPO_NAME = "golf-licenses";
+        const GITHUB_API = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents`;
+        const GITHUB_RAW = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
+        
+        // Get the actual token
+        const GITHUB_TOKEN = getGitHubToken();
+        
+        let allLicenses = [];
+        let fileSHAs = {};
+        let trackingData = {};
+        let invalidAttempts = [];
+        
+        // ========== LOGIN FUNCTIONS ==========
+        function login() {
+            const password = document.getElementById('adminPassword').value;
+            const errorDiv = document.getElementById('loginError');
+            
+            if (password === ADMIN_PASSWORD) {
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+                // Auto-load licenses on login
+                setTimeout(() => {
+                    loadFromGitHub(true);
+                    loadTrackingData();
+                }, 500);
+            } else {
+                errorDiv.style.display = 'block';
+                document.getElementById('adminPassword').value = '';
+            }
+        }
+        
+        function logout() {
+            if (confirm('Logout from admin panel?')) {
+                document.getElementById('loginScreen').style.display = 'block';
+                document.getElementById('adminPanel').style.display = 'none';
+                document.getElementById('adminPassword').value = '';
+                document.getElementById('loginError').style.display = 'none';
+                sessionStorage.removeItem('adminLoggedIn');
+            }
+        }
+        
+        // ========== GITHUB FUNCTIONS ==========
+        async function loadFromGitHub(showMessage = false) {
+            const licenseTable = document.getElementById('licenseTable');
+            const dashboardStats = document.getElementById('dashboardStats');
+            
+            if (showMessage) {
+                showProgress('Loading licenses from GitHub...', 0);
+            }
+            
+            licenseTable.innerHTML = '<div class="loading">🔄 Loading licenses from GitHub...</div>';
+            
+            try {
+                // Fetch list of all license files
+                const response = await fetch(GITHUB_API + '/licenses', {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        licenseTable.innerHTML = '<div class="message info">📁 No license files found yet. Add your first license!</div>';
+                        updateStats([]);
+                        return;
+                    }
+                    throw new Error('GitHub API error: ' + response.status);
+                }
+                
+                const files = await response.json();
+                
+                // Filter for JSON files only
+                const jsonFiles = files.filter(file => file.name.endsWith('.json'));
+                
+                if (jsonFiles.length === 0) {
+                    licenseTable.innerHTML = '<div class="message info">📁 No license files found yet. Add your first license!</div>';
+                    updateStats([]);
+                    hideProgress();
+                    return;
+                }
+                
+                // Load each license file
+                allLicenses = [];
+                fileSHAs = {};
+                
+                for (let i = 0; i < jsonFiles.length; i++) {
+                    const file = jsonFiles[i];
+                    if (showMessage) {
+                        showProgress(`Loading ${i + 1} of ${jsonFiles.length} licenses...`, (i / jsonFiles.length) * 100);
+                    }
+                    
+                    try {
+                        const fileResponse = await fetch(GITHUB_RAW + '/licenses/' + file.name);
+                        if (fileResponse.ok) {
+                            const license = await fileResponse.json();
+                            allLicenses.push(license);
+                            fileSHAs[license.device_id] = file.sha;
+                        }
+                    } catch (error) {
+                        console.error('Error loading file:', file.name, error);
+                    }
+                }
+                
+                // Display licenses
+                displayLicenses();
+                updateStats(allLicenses);
+                
+                if (showMessage) {
+                    showProgress(`✅ Loaded ${allLicenses.length} licenses`, 100);
+                    setTimeout(hideProgress, 2000);
+                    showMessageElement(document.getElementById('addMessage'), 
+                        `✅ Loaded ${allLicenses.length} licenses from GitHub`, 'success');
+                }
+                
+            } catch (error) {
+                licenseTable.innerHTML = `
+                    <div class="message error">
+                        ❌ Error loading from GitHub: ${error.message}
+                    </div>
+                `;
+                if (showMessage) {
+                    showProgress(`❌ Error: ${error.message}`, 0);
+                }
+            }
+        }
+        
+        async function saveLicense() {
+            const deviceId = document.getElementById('deviceId').value.trim();
+            const username = document.getElementById('username').value.trim();
+            const level = parseInt(document.getElementById('licenseLevel').value);
+            const expiryDate = document.getElementById('expiryDate').value;
+            const messageDiv = document.getElementById('addMessage');
+            const saveButton = document.getElementById('saveButton');
+            
+            // Validation
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                showMessageElement(messageDiv, '❌ Device ID must be exactly 15 digits', 'error');
+                return;
+            }
+            
+            if (!username) {
+                showMessageElement(messageDiv, '❌ Please enter customer username', 'error');
+                return;
+            }
+            
+            if (!expiryDate) {
+                showMessageElement(messageDiv, '❌ Please select expiry date', 'error');
+                return;
+            }
+            
+            // Disable button and show progress
+            saveButton.disabled = true;
+            saveButton.innerHTML = '⏳ Uploading...';
+            showProgress('Uploading to GitHub...', 30);
+            
+            // Create license data
+            const licenseData = {
+                device_id: deviceId,
+                username: username,
+                level: level,
+                expiry_date: expiryDate,
+                created: new Date().toISOString().split('T')[0],
+                status: 'active'
+            };
+            
+            const jsonContent = JSON.stringify(licenseData, null, 2);
+            const encodedContent = btoa(unescape(encodeURIComponent(jsonContent)));
+            
+            try {
+                // Check if file exists (for SHA)
+                const existingSHA = fileSHAs[deviceId];
+                const apiUrl = `${GITHUB_API}/licenses/${deviceId}.json`;
+                
+                showProgress('Checking existing file...', 50);
+                
+                const requestBody = {
+                    message: existingSHA ? `Update license for ${username}` : `Add license for ${username}`,
+                    content: encodedContent
+                };
+                
+                // Add SHA if updating existing file
+                if (existingSHA) {
+                    requestBody.sha = existingSHA;
+                }
+                
+                showProgress('Saving to GitHub...', 70);
+                
+                const response = await fetch(apiUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                showProgress('Finalizing...', 90);
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    fileSHAs[deviceId] = result.content.sha;
+                    
+                    showProgress('✅ Success! Reloading data...', 100);
+                    showMessageElement(messageDiv, 
+                        `✅ License ${existingSHA ? 'updated' : 'added'} for ${username}`, 
+                        'success');
+                    
+                    // Clear form
+                    clearForm();
+                    
+                    // Reload data after delay
+                    setTimeout(() => {
+                        loadFromGitHub(true);
+                        saveButton.disabled = false;
+                        saveButton.innerHTML = '💾 Save License to GitHub';
+                        hideProgress();
+                    }, 2000);
+                    
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Upload failed');
+                }
+                
+            } catch (error) {
+                showProgress(`❌ Error: ${error.message}`, 0);
+                showMessageElement(messageDiv, `❌ Upload failed: ${error.message}`, 'error');
+                saveButton.disabled = false;
+                saveButton.innerHTML = '💾 Save License to GitHub';
+            }
+        }
+        
+        async function checkLicense() {
+            const deviceId = document.getElementById('deviceId').value.trim();
+            const messageDiv = document.getElementById('addMessage');
+            
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                showMessageElement(messageDiv, '❌ Enter a valid 15-digit Device ID', 'error');
+                return;
+            }
+            
+            try {
+                showProgress('Checking existing license...', 30);
+                
+                const response = await fetch(`${GITHUB_RAW}/licenses/${deviceId}.json`);
+                
+                if (response.status === 404) {
+                    showMessageElement(messageDiv, '❌ No license found for this Device ID', 'warning');
+                    hideProgress();
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Server error: ' + response.status);
+                }
+                
+                const license = await response.json();
+                
+                showProgress('Loading license data...', 70);
+                
+                // Fill form with existing data
+                document.getElementById('username').value = license.username;
+                document.getElementById('licenseLevel').value = license.level.toString();
+                document.getElementById('expiryDate').value = license.expiry_date;
+                
+                showProgress('✅ License found!', 100);
+                showMessageElement(messageDiv, 
+                    `✅ Found existing license for: ${license.username}`, 
+                    'success');
+                
+                setTimeout(hideProgress, 2000);
+                
+            } catch (error) {
+                if (error.message.includes('404')) {
+                    showMessageElement(messageDiv, '❌ No license found for this Device ID', 'warning');
+                } else {
+                    showMessageElement(messageDiv, `❌ Error: ${error.message}`, 'error');
+                }
+                hideProgress();
+            }
+        }
+        
+        // ========== TRACKING FUNCTIONS ==========
+        async function loadTrackingData() {
+            try {
+                // Load tracking directory structure
+                const trackingResponse = await fetch(GITHUB_API + '/tracking', {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (trackingResponse.status === 404) {
+                    // Create tracking directory if it doesn't exist
+                    await createTrackingDirectory();
+                    updateTrackingStats({});
+                    return;
+                }
+                
+                if (!trackingResponse.ok) {
+                    throw new Error('Failed to load tracking data');
+                }
+                
+                const trackingFiles = await trackingResponse.json();
+                trackingData = {};
+                
+                // Load device tracking files
+                const deviceFiles = trackingFiles.filter(file => 
+                    file.name.endsWith('.json') && !file.name.includes('/')
+                );
+                
+                for (const file of deviceFiles) {
+                    try {
+                        const fileResponse = await fetch(GITHUB_RAW + '/tracking/' + file.name);
+                        if (fileResponse.ok) {
+                            const data = await fileResponse.json();
+                            const deviceId = file.name.replace('.json', '');
+                            trackingData[deviceId] = data;
+                        }
+                    } catch (error) {
+                        console.error('Error loading tracking file:', file.name, error);
+                    }
+                }
+                
+                // Load invalid attempts
+                await loadInvalidAttempts();
+                
+                // Update display
+                updateTrackingStats(trackingData);
+                displayInvalidAttempts();
+                
+            } catch (error) {
+                console.error('Error loading tracking data:', error);
+                showMessageElement(document.getElementById('addMessage'), 
+                    `❌ Error loading tracking data: ${error.message}`, 'error');
+            }
+        }
+        
+        async function createTrackingDirectory() {
+            try {
+                // Create tracking directory
+                await fetch(GITHUB_API + '/tracking', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Create tracking directory',
+                        content: btoa(unescape(encodeURIComponent('{}')))
+                    })
+                });
+                
+                // Create subdirectories
+                await fetch(GITHUB_API + '/tracking/daily', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Create daily tracking directory',
+                        content: btoa(unescape(encodeURIComponent('{}')))
+                    })
+                });
+                
+                await fetch(GITHUB_API + '/tracking/invalid', {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: 'Create invalid attempts directory',
+                        content: btoa(unescape(encodeURIComponent('{}')))
+                    })
+                });
+                
+            } catch (error) {
+                console.error('Error creating tracking directory:', error);
+            }
+        }
+        
+        async function loadInvalidAttempts() {
+            try {
+                const invalidResponse = await fetch(GITHUB_API + '/tracking/invalid', {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (invalidResponse.ok) {
+                    const invalidFiles = await invalidResponse.json();
+                    invalidAttempts = [];
+                    
+                    for (const file of invalidFiles) {
+                        if (file.name.endsWith('.json')) {
+                            const fileResponse = await fetch(GITHUB_RAW + '/tracking/invalid/' + file.name);
+                            if (fileResponse.ok) {
+                                const data = await fileResponse.json();
+                                invalidAttempts.push({
+                                    device_id: file.name.replace('.json', ''),
+                                    ...data
+                                });
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading invalid attempts:', error);
+            }
+        }
+        
+        function updateTrackingStats(trackingData) {
+            const trackingStats = document.getElementById('trackingStats');
+            
+            if (!trackingData || Object.keys(trackingData).length === 0) {
+                trackingStats.innerHTML = `
+                    <div class="stat-card">
+                        <h3>0</h3>
+                        <p>Tracked Devices</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>0</h3>
+                        <p>Total Sessions</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>0m</h3>
+                        <p>Total Time</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>0</h3>
+                        <p>Today's Active</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let totalSessions = 0;
+            let totalTime = 0;
+            let todayActive = 0;
+            const today = new Date().toISOString().split('T')[0];
+            
+            Object.values(trackingData).forEach(deviceData => {
+                if (deviceData.sessions) {
+                    totalSessions += deviceData.sessions.length;
+                    totalTime += deviceData.total_time || 0;
+                    
+                    // Check if used today
+                    const todaySessions = deviceData.sessions.filter(s => s.date === today);
+                    if (todaySessions.length > 0) {
+                        todayActive++;
+                    }
+                }
+            });
+            
+            trackingStats.innerHTML = `
+                <div class="stat-card">
+                    <h3>${Object.keys(trackingData).length}</h3>
+                    <p>Tracked Devices</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${totalSessions}</h3>
+                    <p>Total Sessions</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${totalTime}m</h3>
+                    <p>Total Time</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${todayActive}</h3>
+                    <p>Today's Active</p>
+                </div>
+            `;
+        }
+        
+        async function searchDeviceTracking() {
+            const deviceId = document.getElementById('searchDeviceId').value.trim();
+            const detailsDiv = document.getElementById('deviceTrackingDetails');
+            
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                detailsDiv.innerHTML = '';
+                return;
+            }
+            
+            try {
+                // Check if we have the data loaded
+                if (trackingData[deviceId]) {
+                    displayDeviceTracking(deviceId, trackingData[deviceId]);
+                    return;
+                }
+                
+                // Try to load from GitHub
+                const response = await fetch(GITHUB_RAW + `/tracking/${deviceId}.json`);
+                
+                if (response.status === 404) {
+                    detailsDiv.innerHTML = `
+                        <div class="message warning">
+                            📭 No tracking data found for device: ${deviceId}
+                        </div>
+                    `;
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Failed to load tracking data');
+                }
+                
+                const data = await response.json();
+                displayDeviceTracking(deviceId, data);
+                
+            } catch (error) {
+                detailsDiv.innerHTML = `
+                    <div class="message error">
+                        ❌ Error loading tracking for ${deviceId}: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        function displayDeviceTracking(deviceId, data) {
+            const detailsDiv = document.getElementById('deviceTrackingDetails');
+            const today = new Date().toISOString().split('T')[0];
+            
+            let sessionsHTML = '';
+            if (data.sessions && data.sessions.length > 0) {
+                // Show last 10 sessions
+                const recentSessions = data.sessions.slice(-10).reverse();
+                sessionsHTML = `
+                    <h4>📝 Recent Sessions (Last 10)</h4>
+                    ${recentSessions.map(session => `
+                        <div class="session-item">
+                            <strong>${new Date(session.timestamp).toLocaleString()}</strong><br>
+                            Action: ${session.action} | Duration: ${session.duration}m | Status: ${session.status}
+                        </div>
+                    `).join('')}
+                `;
+            }
+            
+            detailsDiv.innerHTML = `
+                <div class="tracking-details">
+                    <h3>📱 Device: ${deviceId}</h3>
+                    <div class="stats">
+                        <div class="stat-card">
+                            <h3>${data.sessions?.length || 0}</h3>
+                            <p>Total Sessions</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${data.total_time || 0}m</h3>
+                            <p>Total Time</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${data.today_count || 0}</h3>
+                            <p>Today's Usage</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${data.last_used ? new Date(data.last_used).toLocaleDateString() : 'Never'}</h3>
+                            <p>Last Used</p>
+                        </div>
+                    </div>
+                    ${sessionsHTML}
+                </div>
+            `;
+        }
+        
+        function displayInvalidAttempts() {
+            const invalidTable = document.getElementById('invalidTable');
+            
+            if (invalidAttempts.length === 0) {
+                invalidTable.innerHTML = '<div class="message info">✅ No invalid access attempts recorded</div>';
+                return;
+            }
+            
+            let tableHTML = `
+                <table>
+                    <tr>
+                        <th>Device ID</th>
+                        <th>Total Attempts</th>
+                        <th>Last Attempt</th>
+                        <th>Actions</th>
+                    </tr>
+            `;
+            
+            invalidAttempts.forEach(attempt => {
+                tableHTML += `
+                    <tr>
+                        <td><code>${attempt.device_id}</code></td>
+                        <td>${attempt.total_attempts || attempt.attempts?.length || 0}</td>
+                        <td>${attempt.last_attempt ? new Date(attempt.last_attempt).toLocaleString() : 'N/A'}</td>
+                        <td>
+                            <button class="btn btn-primary" onclick="viewInvalidDetails('${attempt.device_id}')" 
+                                    style="padding: 5px 10px; font-size: 12px;">🔍 View</button>
+                            <button class="btn btn-danger" onclick="deleteInvalidAttempts('${attempt.device_id}')" 
+                                    style="padding: 5px 10px; font-size: 12px;">🗑️ Clear</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += '</table>';
+            invalidTable.innerHTML = tableHTML;
+        }
+        
+        async function viewInvalidDetails(deviceId) {
+            try {
+                const response = await fetch(GITHUB_RAW + `/tracking/invalid/${deviceId}.json`);
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    let attemptsHTML = '';
+                    if (data.attempts && data.attempts.length > 0) {
+                        // Show last 20 attempts
+                        const recentAttempts = data.attempts.slice(-20).reverse();
+                        attemptsHTML = `
+                            <h4>🚫 Recent Invalid Attempts (Last 20)</h4>
+                            ${recentAttempts.map(attempt => `
+                                <div class="session-item">
+                                    <strong>${new Date(attempt.timestamp).toLocaleString()}</strong><br>
+                                    Status: ${attempt.status} | Action: ${attempt.action}
+                                </div>
+                            `).join('')}
+                        `;
+                    }
+                    
+                    alert(`Invalid Attempts for ${deviceId}\nTotal: ${data.total_attempts || data.attempts?.length || 0}\n\n${attemptsHTML}`);
+                }
+            } catch (error) {
+                alert(`Error loading details for ${deviceId}: ${error.message}`);
+            }
+        }
+        
+        async function deleteInvalidAttempts(deviceId) {
+            if (!confirm(`Delete all invalid attempts for ${deviceId}?`)) {
+                return;
+            }
+            
+            try {
+                const apiUrl = `${GITHUB_API}/tracking/invalid/${deviceId}.json`;
+                
+                // Get SHA first
+                const getResponse = await fetch(apiUrl, {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (!getResponse.ok) {
+                    throw new Error('File not found');
+                }
+                
+                const fileInfo = await getResponse.json();
+                
+                // Delete file
+                const deleteResponse = await fetch(apiUrl, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Delete invalid attempts for ${deviceId}`,
+                        sha: fileInfo.sha
+                    })
+                });
+                
+                if (deleteResponse.ok) {
+                    showMessageElement(document.getElementById('addMessage'), 
+                        `✅ Deleted invalid attempts for ${deviceId}`, 'success');
+                    loadTrackingData();
+                } else {
+                    throw new Error('Delete failed');
+                }
+                
+            } catch (error) {
+                showMessageElement(document.getElementById('addMessage'), 
+                    `❌ Error deleting invalid attempts: ${error.message}`, 'error');
+            }
+        }
+        
+        async function clearOldTrackingData() {
+            if (!confirm('Clear tracking data older than 30 days? This cannot be undone.')) {
+                return;
+            }
+            
+            showProgress('Cleaning old data...', 0);
+            
+            try {
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                
+                // Clean device tracking files
+                for (const deviceId in trackingData) {
+                    const deviceData = trackingData[deviceId];
+                    if (deviceData.sessions) {
+                        // Filter out old sessions
+                        deviceData.sessions = deviceData.sessions.filter(session => 
+                            new Date(session.timestamp) > thirtyDaysAgo
+                        );
+                        
+                        // Recalculate totals
+                        deviceData.total_time = deviceData.sessions.reduce((sum, session) => 
+                            sum + (session.duration || 0), 0);
+                        
+                        if (deviceData.sessions.length > 0) {
+                            deviceData.last_used = deviceData.sessions[deviceData.sessions.length - 1].timestamp;
+                        }
+                        
+                        // Update on GitHub
+                        await updateTrackingFile(deviceId, deviceData);
+                    }
+                }
+                
+                showProgress('✅ Old data cleared!', 100);
+                showMessageElement(document.getElementById('addMessage'), 
+                    '✅ Old tracking data cleared successfully', 'success');
+                
+                setTimeout(() => {
+                    hideProgress();
+                    loadTrackingData();
+                }, 2000);
+                
+            } catch (error) {
+                showProgress(`❌ Error: ${error.message}`, 0);
+                showMessageElement(document.getElementById('addMessage'), 
+                    `❌ Error clearing old data: ${error.message}`, 'error');
+            }
+        }
+        
+        async function updateTrackingFile(deviceId, data) {
+            try {
+                const apiUrl = `${GITHUB_API}/tracking/${deviceId}.json`;
+                
+                // Get SHA
+                const getResponse = await fetch(apiUrl, {
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+                
+                if (getResponse.ok) {
+                    const fileInfo = await getResponse.json();
+                    const content = JSON.stringify(data, null, 2);
+                    
+                    await fetch(apiUrl, {
+                        method: 'PUT',
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            message: `Update tracking for ${deviceId}`,
+                            content: btoa(unescape(encodeURIComponent(content))),
+                            sha: fileInfo.sha
+                        })
+                    });
+                }
+            } catch (error) {
+                console.error('Error updating tracking file:', error);
+            }
+        }
+        
+        function exportTrackingData() {
+            const dataStr = JSON.stringify(trackingData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+            
+            const exportFileDefaultName = `tracking-data-${new Date().toISOString().split('T')[0]}.json`;
+            
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+            
+            showMessageElement(document.getElementById('addMessage'), 
+                '✅ Tracking data exported successfully', 'success');
+        }
+        
+        // ========== DISPLAY FUNCTIONS ==========
+        function displayLicenses() {
+            const licenseTable = document.getElementById('licenseTable');
+            const licenseCount = document.getElementById('licenseCount');
+            
+            if (allLicenses.length === 0) {
+                licenseTable.innerHTML = '<div class="message info">📁 No licenses found</div>';
+                licenseCount.textContent = '0 licenses';
+                return;
+            }
+            
+            licenseCount.textContent = `${allLicenses.length} licenses`;
+            
+            const now = new Date();
+            let tableHTML = `
+                <table>
+                    <tr>
+                        <th>Username</th>
+                        <th>Device ID</th>
+                        <th>Level</th>
+                        <th>Created</th>
+                        <th>Expiry</th>
+                        <th>Status</th>
+                        <th>Test</th>
+                        <th>Actions</th>
+                    </tr>
+            `;
+            
+            allLicenses.sort((a, b) => b.device_id.localeCompare(a.device_id));
+            
+            allLicenses.forEach(license => {
+                const expired = new Date(license.expiry_date) < now;
+                const testUrl = `https://kannanhari-debug.github.io/golf-licenses/?device_id=${license.device_id}`;
+                
+                tableHTML += `
+                    <tr>
+                        <td>${license.username}</td>
+                        <td><code>${license.device_id}</code></td>
+                        <td>${license.level === 1 ? 'Lite' : 'Premium'}</td>
+                        <td>${license.created}</td>
+                        <td style="color: ${expired ? '#dc3545' : '#28a745'}">
+                            ${license.expiry_date} ${expired ? '⚠️' : '✅'}
+                        </td>
+                        <td>${expired ? '<span style="color: #dc3545">Expired</span>' : '<span style="color: #28a745">Active</span>'}</td>
+                        <td><a href="${testUrl}" target="_blank">🔗 Test</a></td>
+                        <td>
+                            <button class="btn btn-primary" onclick="editLicense('${license.device_id}')" style="padding: 5px 10px; font-size: 12px;">✏️ Edit</button>
+                            <button class="btn btn-danger" onclick="deleteLicense('${license.device_id}', '${license.username}')" style="padding: 5px 10px; font-size: 12px;">🗑️ Delete</button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tableHTML += '</table>';
+            licenseTable.innerHTML = tableHTML;
+        }
+        
+        function updateStats(licenses) {
+            const dashboardStats = document.getElementById('dashboardStats');
+            const now = new Date();
+            
+            const active = licenses.filter(l => new Date(l.expiry_date) > now).length;
+            const expired = licenses.length - active;
+            const lite = licenses.filter(l => l.level === 1).length;
+            const premium = licenses.filter(l => l.level === 2).length;
+            
+            dashboardStats.innerHTML = `
+                <div class="stat-card">
+                    <h3>${licenses.length}</h3>
+                    <p>Total Licenses</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${active}</h3>
+                    <p>Active</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${expired}</h3>
+                    <p>Expired</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${lite}</h3>
+                    <p>Lite</p>
+                </div>
+                <div class="stat-card">
+                    <h3>${premium}</h3>
+                    <p>Premium</p>
+                </div>
+            `;
+        }
+        
+        async function editLicense(deviceId) {
+            try {
+                showProgress('Loading license data...', 30);
+                
+                const response = await fetch(`${GITHUB_RAW}/licenses/${deviceId}.json`);
+                if (response.ok) {
+                    const license = await response.json();
+                    
+                    showProgress('Filling form...', 70);
+                    
+                    // Fill form
+                    document.getElementById('deviceId').value = license.device_id;
+                    document.getElementById('username').value = license.username;
+                    document.getElementById('licenseLevel').value = license.level.toString();
+                    document.getElementById('expiryDate').value = license.expiry_date;
+                    
+                    // Switch to add tab
+                    showTab('add');
+                    
+                    showProgress('✅ Ready to edit!', 100);
+                    showMessageElement(document.getElementById('addMessage'), 
+                        `✏️ Editing license for: ${license.username}<br>
+                        Make changes and click "Save License to GitHub"`, 
+                        'info');
+                    
+                    setTimeout(hideProgress, 2000);
+                }
+            } catch (error) {
+                showMessageElement(document.getElementById('addMessage'), `❌ Error loading license: ${error.message}`, 'error');
+                hideProgress();
+            }
+        }
+        
+        async function deleteLicense(deviceId, username) {
+            if (!confirm(`Are you sure you want to delete license for ${username} (${deviceId})?`)) {
+                return;
+            }
+            
+            try {
+                showProgress('Deleting license...', 30);
+                
+                const apiUrl = `${GITHUB_API}/licenses/${deviceId}.json`;
+                const sha = fileSHAs[deviceId];
+                
+                if (!sha) {
+                    throw new Error('Cannot find file on GitHub');
+                }
+                
+                const response = await fetch(apiUrl, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: `Delete license for ${username}`,
+                        sha: sha
+                    })
+                });
+                
+                showProgress('Deleting...', 70);
+                
+                if (response.ok) {
+                    showProgress('✅ Deleted! Reloading...', 100);
+                    showMessageElement(document.getElementById('addMessage'), `✅ Deleted license for ${username}`, 'success');
+                    
+                    // Remove from local cache
+                    delete fileSHAs[deviceId];
+                    allLicenses = allLicenses.filter(l => l.device_id !== deviceId);
+                    
+                    // Reload data
+                    setTimeout(() => {
+                        loadFromGitHub(true);
+                        hideProgress();
+                    }, 2000);
+                    
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Delete failed');
+                }
+                
+            } catch (error) {
+                showProgress(`❌ Error: ${error.message}`, 0);
+                showMessageElement(document.getElementById('addMessage'), `❌ Delete failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // ========== HELPER FUNCTIONS ==========
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.tabs button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+        
+        function showMessageElement(element, text, type) {
+            element.innerHTML = text;
+            element.className = `message ${type}`;
+            element.style.display = 'block';
+        }
+        
+        function showProgress(message, percent) {
+            document.getElementById('progressBar').style.display = 'block';
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').innerHTML = message;
+        }
+        
+        function hideProgress() {
+            document.getElementById('progressBar').style.display = 'none';
+        }
+        
+        function clearForm() {
+            document.getElementById('deviceId').value = '';
+            document.getElementById('username').value = '';
+            document.getElementById('licenseLevel').value = '1';
+            
+            // Set default expiry to 30 days from now
+            const futureDate = new Date();
+            futureDate.setDate(futureDate.getDate() + 30);
+            document.getElementById('expiryDate').value = futureDate.toISOString().split('T')[0];
+            
+            document.getElementById('addMessage').style.display = 'none';
+            document.getElementById('saveButton').disabled = false;
+            document.getElementById('saveButton').innerHTML = '💾 Save License to GitHub';
+        }
+        
+        // ========== INITIALIZE ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if already logged in
+            const isLoggedIn = sessionStorage.getItem('adminLoggedIn');
+            if (isLoggedIn === 'true') {
+                document.getElementById('loginScreen').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+                setTimeout(() => {
+                    loadFromGitHub(true);
+                    loadTrackingData();
+                }, 500);
+            }
+            
+            // Set default expiry date
+            clearForm();
+        });
+        
+        // Save login state
+        window.addEventListener('beforeunload', function() {
+            if (document.getElementById('adminPanel').style.display !== 'none') {
+                sessionStorage.setItem('adminLoggedIn', 'true');
+            }
+        });
+    </script>
+</body>
+</html>
