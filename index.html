@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>License Check & Usage Tracking</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        .license-info { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .usage-info { background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0; }
+        .status-active { color: #28a745; font-weight: bold; }
+        .status-expired { color: #dc3545; font-weight: bold; }
+        .status-unauthorized { color: #ffc107; font-weight: bold; }
+        .field { margin: 10px 0; }
+        .field label { font-weight: bold; display: inline-block; width: 120px; }
+        .field span { color: #333; }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; }
+        button { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .error { color: #dc3545; background: #f8d7da; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        .success { color: #155724; background: #d4edda; padding: 10px; border-radius: 5px; margin: 10px 0; }
+        .usage-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .usage-table th, .usage-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
+        .usage-table th { background-color: #f2f2f2; }
+        .loading { text-align: center; padding: 20px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🔍 Golf Clash License Check & Usage Tracking</h2>
+        
+        <div id="directAccess" class="error" style="display: none;">
+            <p>⚠️ Unauthorized Access</p>
+            <p>Direct access to this file is not allowed.</p>
+            <p>Use: <code>?device_id=YOUR_DEVICE_ID</code></p>
+        </div>
+        
+        <div id="licenseForm" style="display: none;">
+            <input type="text" id="deviceIdInput" placeholder="Enter 15-digit Device ID">
+            <button onclick="checkLicense()">Check License</button>
+            <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                Example: <a href="?device_id=739414467890316">Test License</a>
+            </p>
+        </div>
+        
+        <div id="licenseResult"></div>
+    </div>
+
+    <script>
+        // Configuration
+        const GITHUB_TOKEN = "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";
+        const REPO_OWNER = "kannanhari-debug";
+        const REPO_NAME = "golf-licenses";
+        const GITHUB_RAW = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main`;
+        const GITHUB_API = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents`;
+        
+        // Check if device_id parameter exists
+        const urlParams = new URLSearchParams(window.location.search);
+        const deviceId = urlParams.get('device_id');
+        const trackSession = urlParams.get('track_session');
+        const sessionId = urlParams.get('session_id');
+        
+        // Track session start if requested
+        if (trackSession === 'start' && deviceId) {
+            trackSessionStart(deviceId);
+        }
+        
+        // Track session end if requested
+        if (trackSession === 'end' && deviceId && sessionId) {
+            trackSessionEnd(deviceId, sessionId);
+        }
+        
+        if (deviceId) {
+            // Hide form, show checking message
+            document.getElementById('licenseForm').style.display = 'none';
+            checkLicense(deviceId);
+        } else {
+            // Show unauthorized message for direct access
+            document.getElementById('directAccess').style.display = 'block';
+            document.getElementById('licenseForm').style.display = 'block';
+        }
+        
+        // Manual check from input
+        function checkLicenseManual() {
+            const deviceId = document.getElementById('deviceIdInput').value.trim();
+            if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+                alert('Please enter a valid 15-digit Device ID');
+                return;
+            }
+            // Update URL without page reload
+            const newUrl = window.location.origin + window.location.pathname + '?device_id=' + deviceId;
+            window.history.pushState({}, '', newUrl);
+            document.getElementById('licenseForm').style.display = 'none';
+            checkLicense(deviceId);
+        }
+        
+        // Main license check function
+        async function checkLicense(deviceId) {
+            const resultDiv = document.getElementById('licenseResult');
+            resultDiv.innerHTML = '<div class="loading">🔍 Checking license for device: <strong>' + deviceId + '</strong></div>';
+            
+            try {
+                const response = await fetch(`${GITHUB_RAW}/licenses/${deviceId}.json`);
+                
+                if (response.status === 404) {
+                    // Device not found - unauthorized
+                    trackUnauthorizedAccess(deviceId);
+                    
+                    resultDiv.innerHTML = `
+                        <div class="license-info">
+                            <h3 class="status-unauthorized">🚫 UNAUTHORIZED USER</h3>
+                            <div class="field"><label>Device ID:</label> <span>${deviceId}</span></div>
+                            <div class="field"><label>Status:</label> <span class="status-unauthorized">UNAUTHORIZED</span></div>
+                            <div class="field"><label>Reason:</label> <span>No license found for this device</span></div>
+                            <div class="field"><label>Action:</label> <span>Contact admin to purchase license</span></div>
+                        </div>
+                        <div style="margin-top: 20px; padding: 10px; background: #fff3cd; border-radius: 5px;">
+                            <p><strong>⚠️ Access Attempt Logged</strong></p>
+                            <p>Unauthorized access attempt has been recorded.</p>
+                        </div>
+                        <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                            📱 For script: <code>https://kannanhari-debug.github.io/golf-licenses/?device_id=${deviceId}</code>
+                        </p>
+                    `;
+                    return;
+                }
+                
+                if (!response.ok) {
+                    throw new Error('Server error: ' + response.status);
+                }
+                
+                const license = await response.json();
+                
+                // Parse dates
+                const createdDate = new Date(license.created);
+                const expiryDate = new Date(license.expiry_date);
+                const now = new Date();
+                
+                // Determine status
+                let status = 'ACTIVE';
+                let statusClass = 'status-active';
+                
+                if (expiryDate < now) {
+                    status = 'EXPIRED';
+                    statusClass = 'status-expired';
+                    trackExpiredAccess(deviceId, license.username);
+                } else {
+                    trackAuthorizedAccess(deviceId, license.username);
+                }
+                
+                // Format dates
+                const formatDate = (date) => {
+                    return date.toISOString().split('T')[0];
+                };
+                
+                // Load usage data
+                const usageData = await loadUsageData(deviceId);
+                
+                resultDiv.innerHTML = `
+                    <div class="license-info">
+                        <h3 class="${statusClass}">📋 LICENSE INFORMATION</h3>
+                        <div class="field"><label>👤 Username:</label> <span>${license.username}</span></div>
+                        <div class="field"><label>🆔 Device ID:</label> <span>${license.device_id}</span></div>
+                        <div class="field"><label>📊 Level:</label> <span>${license.level === 1 ? 'Lite' : 'Premium'}</span></div>
+                        <div class="field"><label>📅 Created:</label> <span>${formatDate(createdDate)}</span></div>
+                        <div class="field"><label>📅 Expiry:</label> <span>${formatDate(expiryDate)}</span></div>
+                        <div class="field"><label>📈 Status:</label> <span class="${statusClass}">${status}</span></div>
+                        <div class="field"><label>⏰ Days left:</label> <span>${status === 'ACTIVE' ? Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24)) : '0'}</span></div>
+                    </div>
+                    
+                    <div class="usage-info">
+                        <h3>📊 USAGE TRACKING</h3>
+                        <div id="usageData">
+                            <div class="loading">Loading usage data...</div>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <button class="btn-refresh" onclick="refreshUsageData('${deviceId}')" style="background: #6c757d; padding: 8px 15px; font-size: 14px;">
+                                🔄 Refresh Usage Data
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #e7f3ff; border-radius: 5px;">
+                        <h4>🎯 Script Usage Tracking</h4>
+                        <p>For your Lua script:</p>
+                        <ol style="margin-left: 20px;">
+                            <li><strong>Start Session:</strong><br>
+                            <code>https://kannanhari-debug.github.io/golf-licenses/?device_id=${deviceId}&track_session=start</code></li>
+                            <li><strong>End Session:</strong><br>
+                            <code>https://kannanhari-debug.github.io/golf-licenses/?device_id=${deviceId}&track_session=end&session_id=SESSION_ID</code></li>
+                        </ol>
+                    </div>
+                    
+                    <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                        📱 For license check: <code>https://kannanhari-debug.github.io/golf-licenses/?device_id=${deviceId}</code>
+                    </p>
+                `;
+                
+                // Display usage data
+                displayUsageData(usageData, deviceId);
+                
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="error">
+                        ❌ Error: ${error.message}
+                    </div>
+                    <p style="margin-top: 10px;">
+                        Device ID: <code>${deviceId}</code>
+                    </p>
+                `;
+            }
+        }
+        
+        // Load usage data from GitHub
+        async function loadUsageData(deviceId) {
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                
+                // Try to load device summary
+                const summaryResponse = await fetch(`${GITHUB_RAW}/tracking/devices/${deviceId}.json`);
+                if (!summaryResponse.ok) return null;
+                
+                const summary = await summaryResponse.json();
+                
+                // Try to load today's logs
+                const logsResponse = await fetch(`${GITHUB_RAW}/tracking/logs/${today}.json`);
+                if (!logsResponse.ok) return { summary, todayLogs: [] };
+                
+                const logs = await logsResponse.json();
+                const todayLogs = logs.filter(log => log.device_id === deviceId);
+                
+                return { summary, todayLogs };
+                
+            } catch (error) {
+                console.log('No usage data found:', error.message);
+                return null;
+            }
+        }
+        
+        // Display usage data
+        function displayUsageData(usageData, deviceId) {
+            const usageDiv = document.getElementById('usageData');
+            
+            if (!usageData || !usageData.summary) {
+                usageDiv.innerHTML = '<p>No usage data available yet.</p>';
+                return;
+            }
+            
+            const { summary, todayLogs } = usageData;
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            
+            let html = `
+                <div class="field"><label>📅 First Access:</label> <span>${summary.first_access || 'Not recorded'}</span></div>
+                <div class="field"><label>📅 Last Access:</label> <span>${summary.last_access || 'Not recorded'}</span></div>
+                <div class="field"><label>🔢 Total Sessions:</label> <span>${summary.total_sessions || 0}</span></div>
+                <div class="field"><label>⏱️ Total Time:</label> <span>${formatDuration(summary.total_duration_seconds || 0)}</span></div>
+            `;
+            
+            if (todayLogs && todayLogs.length > 0) {
+                const todaySessions = todayLogs.length;
+                const todayDuration = todayLogs.reduce((total, log) => total + (log.duration_seconds || 0), 0);
+                
+                html += `
+                    <div class="field"><label>📊 Today Sessions:</label> <span>${todaySessions}</span></div>
+                    <div class="field"><label>⏱️ Today Time:</label> <span>${formatDuration(todayDuration)}</span></div>
+                `;
+                
+                // Show recent sessions table
+                if (todayLogs.length > 0) {
+                    html += `
+                        <h4 style="margin-top: 15px;">📋 Today's Sessions</h4>
+                        <table class="usage-table">
+                            <tr>
+                                <th>Start Time</th>
+                                <th>End Time</th>
+                                <th>Duration</th>
+                            </tr>
+                    `;
+                    
+                    todayLogs.slice(-5).reverse().forEach(log => {
+                        if (log.start_time && log.end_time) {
+                            html += `
+                                <tr>
+                                    <td>${formatTime(log.start_time)}</td>
+                                    <td>${formatTime(log.end_time)}</td>
+                                    <td>${formatDuration(log.duration_seconds || 0)}</td>
+                                </tr>
+                            `;
+                        }
+                    });
+                    
+                    html += '</table>';
+                }
+            }
+            
+            usageDiv.innerHTML = html;
+        }
+        
+        // Track unauthorized access
+        async function trackUnauthorizedAccess(deviceId) {
+            try {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const timestamp = now.toISOString();
+                
+                // Prepare unauthorized access log
+                const unauthLog = {
+                    device_id: deviceId,
+                    timestamp: timestamp,
+                    type: 'unauthorized',
+                    user_agent: navigator.userAgent
+                };
+                
+                // Save to GitHub
+                await saveToGitHub(`tracking/unauthorized/${today}.json`, unauthLog, true);
+                
+            } catch (error) {
+                console.error('Error tracking unauthorized access:', error);
+            }
+        }
+        
+        // Track expired access
+        async function trackExpiredAccess(deviceId, username) {
+            try {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const timestamp = now.toISOString();
+                
+                // Prepare expired access log
+                const expiredLog = {
+                    device_id: deviceId,
+                    username: username,
+                    timestamp: timestamp,
+                    type: 'expired',
+                    user_agent: navigator.userAgent
+                };
+                
+                // Save to GitHub
+                await saveToGitHub(`tracking/expired/${today}.json`, expiredLog, true);
+                
+            } catch (error) {
+                console.error('Error tracking expired access:', error);
+            }
+        }
+        
+        // Track authorized access
+        async function trackAuthorizedAccess(deviceId, username) {
+            try {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const timestamp = now.toISOString();
+                
+                // Prepare access log
+                const accessLog = {
+                    device_id: deviceId,
+                    username: username,
+                    timestamp: timestamp,
+                    type: 'authorized_check',
+                    user_agent: navigator.userAgent
+                };
+                
+                // Save to GitHub (append to daily log)
+                await saveToGitHub(`tracking/access/${today}.json`, accessLog, true);
+                
+                // Update device summary
+                await updateDeviceSummary(deviceId, username, timestamp);
+                
+            } catch (error) {
+                console.error('Error tracking authorized access:', error);
+            }
+        }
+        
+        // Track session start
+        async function trackSessionStart(deviceId) {
+            try {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const timestamp = now.toISOString();
+                const sessionId = generateSessionId();
+                
+                // Prepare session start log
+                const sessionLog = {
+                    device_id: deviceId,
+                    session_id: sessionId,
+                    start_time: timestamp,
+                    date: today,
+                    status: 'started'
+                };
+                
+                // Save to GitHub
+                await saveToGitHub(`tracking/sessions/${today}.json`, sessionLog, true);
+                
+                // Return session ID for script to use
+                return sessionId;
+                
+            } catch (error) {
+                console.error('Error tracking session start:', error);
+            }
+        }
+        
+        // Track session end
+        async function trackSessionEnd(deviceId, sessionId) {
+            try {
+                const now = new Date();
+                const today = now.toISOString().split('T')[0];
+                const timestamp = now.toISOString();
+                
+                // Load today's sessions to find the start time
+                const sessionsResponse = await fetch(`${GITHUB_RAW}/tracking/sessions/${today}.json`);
+                if (sessionsResponse.ok) {
+                    const sessions = await sessionsResponse.json();
+                    const session = Array.isArray(sessions) 
+                        ? sessions.find(s => s.session_id === sessionId && s.device_id === deviceId)
+                        : sessions;
+                    
+                    if (session && session.start_time) {
+                        const startTime = new Date(session.start_time);
+                        const durationSeconds = Math.floor((now - startTime) / 1000);
+                        
+                        // Prepare session end log
+                        const sessionEndLog = {
+                            device_id: deviceId,
+                            session_id: sessionId,
+                            start_time: session.start_time,
+                            end_time: timestamp,
+                            duration_seconds: durationSeconds,
+                            date: today,
+                            status: 'completed'
+                        };
+                        
+                        // Save to GitHub
+                        await saveToGitHub(`tracking/logs/${today}.json`, sessionEndLog, true);
+                        
+                        // Update device summary with duration
+                        await updateDeviceDuration(deviceId, durationSeconds);
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error tracking session end:', error);
+            }
+        }
+        
+        // Update device summary
+        async function updateDeviceSummary(deviceId, username, timestamp) {
+            try {
+                const summaryPath = `tracking/devices/${deviceId}.json`;
+                
+                // Try to load existing summary
+                let summary = {
+                    device_id: deviceId,
+                    username: username,
+                    total_sessions: 0,
+                    total_duration_seconds: 0,
+                    last_access: timestamp
+                };
+                
+                try {
+                    const response = await fetch(`${GITHUB_RAW}/${summaryPath}`);
+                    if (response.ok) {
+                        const existing = await response.json();
+                        summary = {
+                            ...existing,
+                            last_access: timestamp
+                        };
+                    } else {
+                        summary.first_access = timestamp;
+                    }
+                } catch (error) {
+                    summary.first_access = timestamp;
+                }
+                
+                // Save updated summary
+                await saveToGitHub(summaryPath, summary, false);
+                
+            } catch (error) {
+                console.error('Error updating device summary:', error);
+            }
+        }
+        
+        // Update device duration
+        async function updateDeviceDuration(deviceId, durationSeconds) {
+            try {
+                const summaryPath = `tracking/devices/${deviceId}.json`;
+                
+                // Load existing summary
+                const response = await fetch(`${GITHUB_RAW}/${summaryPath}`);
+                if (response.ok) {
+                    const summary = await response.json();
+                    
+                    // Update totals
+                    summary.total_sessions = (summary.total_sessions || 0) + 1;
+                    summary.total_duration_seconds = (summary.total_duration_seconds || 0) + durationSeconds;
+                    summary.last_session_end = new Date().toISOString();
+                    
+                    // Save updated summary
+                    await saveToGitHub(summaryPath, summary, false);
+                }
+                
+            } catch (error) {
+                console.error('Error updating device duration:', error);
+            }
+        }
+        
+        // Save data to GitHub
+        async function saveToGitHub(path, data, append = false) {
+            try {
+                const apiUrl = `${GITHUB_API}/${path}`;
+                
+                // Prepare content
+                let content;
+                if (append) {
+                    // Try to load existing data first
+                    try {
+                        const response = await fetch(`${GITHUB_RAW}/${path}`);
+                        if (response.ok) {
+                            const existingData = await response.json();
+                            if (Array.isArray(existingData)) {
+                                content = [...existingData, data];
+                            } else {
+                                content = [existingData, data];
+                            }
+                        } else {
+                            content = [data];
+                        }
+                    } catch (error) {
+                        content = [data];
+                    }
+                } else {
+                    content = data;
+                }
+                
+                const jsonContent = JSON.stringify(content, null, 2);
+                const encodedContent = btoa(unescape(encodeURIComponent(jsonContent)));
+                
+                // Check if file exists to get SHA
+                let sha = null;
+                try {
+                    const checkResponse = await fetch(apiUrl, {
+                        headers: {
+                            'Authorization': `token ${GITHUB_TOKEN}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+                    
+                    if (checkResponse.ok) {
+                        const fileInfo = await checkResponse.json();
+                        sha = fileInfo.sha;
+                    }
+                } catch (error) {
+                    // File doesn't exist, will create new
+                }
+                
+                // Prepare request body
+                const requestBody = {
+                    message: `Update tracking data: ${path.split('/').pop()}`,
+                    content: encodedContent
+                };
+                
+                if (sha) {
+                    requestBody.sha = sha;
+                }
+                
+                // Save to GitHub
+                const saveResponse = await fetch(apiUrl, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${GITHUB_TOKEN}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+                
+                return saveResponse.ok;
+                
+            } catch (error) {
+                console.error('Error saving to GitHub:', error);
+                return false;
+            }
+        }
+        
+        // Helper functions
+        function generateSessionId() {
+            return 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+        
+        function formatDuration(seconds) {
+            if (!seconds) return '0s';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (hours > 0) {
+                return `${hours}h ${minutes}m ${secs}s`;
+            } else if (minutes > 0) {
+                return `${minutes}m ${secs}s`;
+            } else {
+                return `${secs}s`;
+            }
+        }
+        
+        function formatTime(isoString) {
+            if (!isoString) return 'N/A';
+            const date = new Date(isoString);
+            return date.toLocaleTimeString();
+        }
+        
+        function refreshUsageData(deviceId) {
+            const usageDiv = document.getElementById('usageData');
+            usageDiv.innerHTML = '<div class="loading">Refreshing usage data...</div>';
+            
+            setTimeout(async () => {
+                const usageData = await loadUsageData(deviceId);
+                displayUsageData(usageData, deviceId);
+            }, 500);
+        }
+        
+        // Update function name for button
+        window.checkLicense = checkLicenseManual;
+    </script>
+</body>
+</html>
