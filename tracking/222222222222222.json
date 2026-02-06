@@ -1,0 +1,17 @@
+{
+  "sessions": [
+    {
+      "device_id": "222222222222222",
+      "status": "UNAUTHORIZED",
+      "action": "login",
+      "timestamp": "2026-02-06T22:10:52.778Z",
+      "date": "2026-02-06",
+      "start_time": "2026-02-06T22:10:52.636Z",
+      "end_time": null,
+      "duration": 0
+    }
+  ],
+  "total_time": 0,
+  "last_used": "2026-02-06T22:10:52.778Z",
+  "today_count": 1
+}
