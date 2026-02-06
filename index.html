@@ -1,0 +1,210 @@
+<!-- Add this section after line 100 in your index.html -->
+<script>
+// ========== SIMPLE API FOR LUA SCRIPTS ==========
+// This endpoint will be called by Lua scripts for license checking
+async function handleLuaRequest(params) {
+    const deviceId = params.device_id;
+    const action = params.action || 'check';
+    const duration = params.duration || 0;
+    
+    if (!deviceId || !/^\d{15}$/.test(deviceId)) {
+        return {
+            error: 'Invalid device ID',
+            status: 'INVALID'
+        };
+    }
+    
+    try {
+        // Check license
+        const response = await fetch('licenses/' + deviceId + '.json');
+        
+        if (response.status === 404) {
+            // Record invalid attempt for tracking
+            await recordInvalidLuaAttempt(deviceId, 'NOT_FOUND', action, duration);
+            return {
+                status: 'NOT_FOUND',
+                device_id: deviceId,
+                message: 'License not found'
+            };
+        }
+        
+        if (!response.ok) {
+            return {
+                status: 'ERROR',
+                error: 'Server error: ' + response.status
+            };
+        }
+        
+        const license = await response.json();
+        const expiryDate = new Date(license.expiry_date);
+        const now = new Date();
+        
+        let status = 'ACTIVE';
+        if (expiryDate < now) {
+            status = 'EXPIRED';
+        }
+        
+        // Record usage for Lua script
+        await recordLuaUsage(deviceId, status, action, duration);
+        
+        return {
+            status: status,
+            device_id: license.device_id,
+            username: license.username,
+            level: license.level,
+            created: license.created,
+            expiry_date: license.expiry_date,
+            days_left: status === 'ACTIVE' ? 
+                Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24)) : 0
+        };
+        
+    } catch (error) {
+        return {
+            status: 'ERROR',
+            error: error.message
+        };
+    }
+}
+
+// Record Lua script usage
+async function recordLuaUsage(deviceId, status, action, duration) {
+    try {
+        const timestamp = new Date().toISOString();
+        const usageData = {
+            device_id: deviceId,
+            status: status,
+            action: action,
+            timestamp: timestamp,
+            date: timestamp.split('T')[0],
+            duration: duration,
+            source: 'lua_script'
+        };
+        
+        // Record in tracking
+        const trackingPath = `tracking/lua_${deviceId}.json`;
+        await updateLuaTracking(trackingPath, deviceId, usageData);
+        
+    } catch (error) {
+        console.error('Error recording Lua usage:', error);
+    }
+}
+
+// Update Lua tracking file
+async function updateLuaTracking(filePath, deviceId, usageData) {
+    try {
+        let existingData = { sessions: [], total_time: 0 };
+        let sha = null;
+        
+        // Try to get existing file
+        const existingResponse = await fetch(`${GITHUB_API}/${filePath}`, {
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        
+        if (existingResponse.ok) {
+            const fileInfo = await existingResponse.json();
+            existingData = JSON.parse(atob(fileInfo.content));
+            sha = fileInfo.sha;
+        }
+        
+        // Add new session
+        existingData.sessions.push(usageData);
+        existingData.total_time += usageData.duration || 0;
+        existingData.last_used = usageData.timestamp;
+        existingData.device_id = deviceId;
+        
+        // Update on GitHub
+        const content = JSON.stringify(existingData, null, 2);
+        await fetch(`${GITHUB_API}/${filePath}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: `Track Lua ${usageData.action} for ${deviceId}`,
+                content: btoa(unescape(encodeURIComponent(content))),
+                sha: sha
+            })
+        });
+        
+    } catch (error) {
+        console.error('Error updating Lua tracking:', error);
+    }
+}
+
+// Record invalid Lua attempt
+async function recordInvalidLuaAttempt(deviceId, status, action, duration) {
+    try {
+        const timestamp = new Date().toISOString();
+        const attemptData = {
+            device_id: deviceId,
+            status: status,
+            action: action,
+            timestamp: timestamp,
+            duration: duration,
+            source: 'lua_script'
+        };
+        
+        const filePath = `tracking/invalid/lua_${deviceId}.json`;
+        await updateInvalidLuaAttempt(filePath, deviceId, attemptData);
+        
+    } catch (error) {
+        console.error('Error recording invalid Lua attempt:', error);
+    }
+}
+
+async function updateInvalidLuaAttempt(filePath, deviceId, attemptData) {
+    try {
+        let existingData = { attempts: [] };
+        let sha = null;
+        
+        const existingResponse = await fetch(`${GITHUB_API}/${filePath}`, {
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        
+        if (existingResponse.ok) {
+            const fileInfo = await existingResponse.json();
+            existingData = JSON.parse(atob(fileInfo.content));
+            sha = fileInfo.sha;
+        }
+        
+        existingData.attempts.push(attemptData);
+        existingData.last_attempt = attemptData.timestamp;
+        existingData.total_attempts = existingData.attempts.length;
+        
+        const content = JSON.stringify(existingData, null, 2);
+        await fetch(`${GITHUB_API}/${filePath}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `token ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: `Record invalid Lua attempt for ${deviceId}`,
+                content: btoa(unescape(encodeURIComponent(content))),
+                sha: sha
+            })
+        });
+        
+    } catch (error) {
+        console.error('Error updating invalid Lua attempt:', error);
+    }
+}
+
+// Handle URL parameters for API
+if (window.location.pathname === '/api/check') {
+    const params = new URLSearchParams(window.location.search);
+    handleLuaRequest(Object.fromEntries(params)).then(result => {
+        document.body.innerHTML = JSON.stringify(result, null, 2);
+        document.head.innerHTML = '<title>License API</title>';
+    });
+}
+</script>
