@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Golf Clash License Manager</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f0f0f0; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        input, select { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #218838; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        th { background: #f2f2f2; }
+        .tab { display: none; }
+        .active { display: block; }
+        .menu { display: flex; gap: 10px; margin-bottom: 20px; }
+        .menu button { background: #007bff; }
+        .menu button:hover { background: #0056b3; }
+        .stat { display: inline-block; padding: 10px; margin: 5px; background: #e9ecef; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏌️ Golf Clash License Manager</h1>
+        
+        <div class="menu">
+            <button onclick="showTab('setup')">⚙️ Setup</button>
+            <button onclick="showTab('manage')">📋 Manage Licenses</button>
+            <button onclick="showTab('encrypt')">🔐 Save & Upload</button>
+        </div>
+        
+        <!-- SETUP TAB -->
+        <div id="setup" class="tab active">
+            <h2>⚙️ Setup Instructions</h2>
+            <h3>Step 1: Set Encryption Key</h3>
+            <p><strong>IMPORTANT:</strong> This key must MATCH the key in your Lua script!</p>
+            <input type="text" id="secretKey" placeholder="Enter a secret key (e.g., MyKey123)" style="font-family: monospace;">
+            <button onclick="saveKey()">💾 Save Key</button>
+            
+            <h3>Step 2: Your GitHub Info</h3>
+            <p><strong>Username:</strong> <span id="githubUsername">(your GitHub username will appear here)</span></p>
+            <p><strong>Repository:</strong> <span id="repoName">(your repo name will appear here)</span></p>
+            <p><strong>License URL:</strong> <code id="licenseUrl">https://yourname.github.io/repo/licenses.json</code></p>
+        </div>
+        
+        <!-- MANAGE LICENSES TAB -->
+        <div id="manage" class="tab">
+            <h2>📋 Add New License</h2>
+            <input type="text" id="userName" placeholder="Customer Name">
+            <input type="text" id="deviceId" placeholder="Device ID (will generate)">
+            <select id="licenseLevel">
+                <option value="1">Lite Version</option>
+                <option value="2">Premium Version</option>
+            </select>
+            <input type="date" id="expiryDate">
+            <button onclick="addLicense()">➕ Add License</button>
+            
+            <h2>Current Licenses</h2>
+            <div id="stats"></div>
+            <div id="licenseTable"></div>
+        </div>
+        
+        <!-- ENCRYPT TAB -->
+        <div id="encrypt" class="tab">
+            <h2>🔐 Save & Upload to GitHub</h2>
+            <p>After adding licenses, save and upload to GitHub:</p>
+            <button onclick="saveData()">💾 Save Locally</button>
+            <button onclick="downloadFile()">📥 Download licenses.json</button>
+            <button onclick="showUploadHelp()">📤 How to Upload</button>
+            
+            <div id="uploadHelp" style="display: none; margin-top: 20px; padding: 15px; background: #e7f3ff; border-radius: 5px;">
+                <h3>📤 Upload Instructions:</h3>
+                <ol>
+                    <li>Go to your GitHub repository: <code id="repoLink"></code></li>
+                    <li>Click "Add file" → "Upload files"</li>
+                    <li>Drag & drop the downloaded licenses.json file</li>
+                    <li>Click "Commit changes"</li>
+                    <li>Wait 1-2 minutes for GitHub to update</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Storage
+        let licenses = [];
+        let secretKey = "MySecretKey123"; // Default key
+        
+        // Load saved data
+        function loadData() {
+            const saved = localStorage.getItem('gcLicenses');
+            if (saved) licenses = JSON.parse(saved);
+            
+            const savedKey = localStorage.getItem('gcSecretKey');
+            if (savedKey) secretKey = savedKey;
+            
+            document.getElementById('secretKey').value = secretKey;
+            
+            // Auto-detect GitHub info from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const user = urlParams.get('user') || 'YOUR_USERNAME';
+            const repo = urlParams.get('repo') || 'YOUR_REPO_NAME';
+            
+            document.getElementById('githubUsername').textContent = user;
+            document.getElementById('repoName').textContent = repo;
+            document.getElementById('licenseUrl').textContent = `https://${user}.github.io/${repo}/licenses.json`;
+            document.getElementById('repoLink').textContent = `https://github.com/${user}/${repo}`;
+            
+            updateDisplay();
+        }
+        
+        // Save encryption key
+        function saveKey() {
+            secretKey = document.getElementById('secretKey').value;
+            if (!secretKey) {
+                alert("Please enter a secret key!");
+                return;
+            }
+            localStorage.setItem('gcSecretKey', secretKey);
+            alert("✅ Key saved! Use this EXACT key in your Lua script.");
+        }
+        
+        // Generate device ID
+        function generateDeviceId() {
+            let id = "";
+            for (let i = 0; i < 15; i++) {
+                id += Math.floor(Math.random() * 10);
+            }
+            document.getElementById('deviceId').value = id;
+        }
+        
+        // Add new license
+        function addLicense() {
+            const userName = document.getElementById('userName').value;
+            let deviceId = document.getElementById('deviceId').value;
+            const level = parseInt(document.getElementById('licenseLevel').value);
+            const expiryDate = document.getElementById('expiryDate').value;
+            
+            if (!userName) {
+                alert("Enter customer name!");
+                return;
+            }
+            
+            if (!deviceId) {
+                // Auto-generate if empty
+                deviceId = "";
+                for (let i = 0; i < 15; i++) deviceId += Math.floor(Math.random() * 10);
+            }
+            
+            if (!expiryDate) {
+                alert("Select expiry date!");
+                return;
+            }
+            
+            // Remove existing license for same device
+            licenses = licenses.filter(l => l.device_id !== deviceId);
+            
+            // Add new license
+            licenses.push({
+                device_id: deviceId,
+                username: userName,
+                level: level,
+                expiry_date: expiryDate,
+                created: new Date().toISOString().split('T')[0]
+            });
+            
+            // Save
+            localStorage.setItem('gcLicenses', JSON.stringify(licenses));
+            
+            // Clear form
+            document.getElementById('userName').value = "";
+            document.getElementById('deviceId').value = "";
+            document.getElementById('expiryDate').value = "";
+            
+            updateDisplay();
+            alert("✅ License added for: " + userName);
+        }
+        
+        // Delete license
+        function deleteLicense(deviceId) {
+            if (confirm("Delete this license?")) {
+                licenses = licenses.filter(l => l.device_id !== deviceId);
+                localStorage.setItem('gcLicenses', JSON.stringify(licenses));
+                updateDisplay();
+            }
+        }
+        
+        // Update display
+        function updateDisplay() {
+            const now = new Date();
+            const active = licenses.filter(l => new Date(l.expiry_date) > now).length;
+            const lite = licenses.filter(l => l.level === 1).length;
+            const premium = licenses.filter(l => l.level === 2).length;
+            
+            // Update stats
+            document.getElementById('stats').innerHTML = `
+                <div class="stat">Total: ${licenses.length}</div>
+                <div class="stat">Active: ${active}</div>
+                <div class="stat">Lite: ${lite}</div>
+                <div class="stat">Premium: ${premium}</div>
+            `;
+            
+            // Update table
+            let tableHTML = '<table>';
+            tableHTML += '<tr><th>Name</th><th>Device ID</th><th>Level</th><th>Expiry</th><th>Status</th><th>Action</th></tr>';
+            
+            if (licenses.length === 0) {
+                tableHTML += '<tr><td colspan="6" style="text-align: center;">No licenses yet</td></tr>';
+            } else {
+                licenses.forEach(license => {
+                    const expired = new Date(license.expiry_date) < now;
+                    tableHTML += `
+                        <tr>
+                            <td>${license.username}</td>
+                            <td><code>${license.device_id}</code></td>
+                            <td>${license.level === 1 ? 'Lite' : 'Premium'}</td>
+                            <td style="color: ${expired ? 'red' : 'green'}">
+                                ${license.expiry_date} ${expired ? '⚠️' : '✅'}
+                            </td>
+                            <td>${expired ? 'Expired' : 'Active'}</td>
+                            <td><button onclick="deleteLicense('${license.device_id}')" style="background: #dc3545;">Delete</button></td>
+                        </tr>
+                    `;
+                });
+            }
+            
+            tableHTML += '</table>';
+            document.getElementById('licenseTable').innerHTML = tableHTML;
+        }
+        
+        // Simple XOR encryption
+        function xorEncrypt(text, key) {
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                result += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+            }
+            return btoa(result); // Base64
+        }
+        
+        // Save and encrypt data
+        function saveData() {
+            if (!secretKey) {
+                alert("Set encryption key first!");
+                showTab('setup');
+                return;
+            }
+            
+            const data = {
+                licenses: licenses,
+                timestamp: new Date().toISOString(),
+                version: "1.0"
+            };
+            
+            const jsonStr = JSON.stringify(data);
+            const encrypted = xorEncrypt(jsonStr, secretKey);
+            
+            const output = {
+                data: encrypted,
+                version: "1.0",
+                timestamp: new Date().toISOString()
+            };
+            
+            localStorage.setItem('gcEncrypted', JSON.stringify(output));
+            alert("✅ Data encrypted and saved!");
+        }
+        
+        // Download file
+        function downloadFile() {
+            const encrypted = localStorage.getItem('gcEncrypted');
+            if (!encrypted) {
+                alert("Save data first!");
+                return;
+            }
+            
+            const blob = new Blob([encrypted], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'licenses.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            alert("✅ File downloaded! Now upload it to GitHub.");
+        }
+        
+        // Show upload help
+        function showUploadHelp() {
+            document.getElementById('uploadHelp').style.display = 'block';
+        }
+        
+        // Tab navigation
+        function showTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            
+            // Set default expiry to 30 days from now
+            const futureDate = new Date();
+            futureDate.setDate(futureDate.getDate() + 30);
+            document.getElementById('expiryDate').value = futureDate.toISOString().split('T')[0];
+            
+            // Generate device ID button
+            document.getElementById('deviceId').addEventListener('click', generateDeviceId);
+            
+            // Auto-generate device ID on load
+            generateDeviceId();
+        });
+    </script>
+</body>
+</html>
