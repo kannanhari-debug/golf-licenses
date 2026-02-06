@@ -9,5 +9,16 @@
         "duration": 0
       }
     ]
+  },
+  "739414467890316": {
+    "count": 1,
+    "total_time": 0,
+    "sessions": [
+      {
+        "action": "login",
+        "timestamp": "2026-02-06T20:03:12.249Z",
+        "duration": 0
+      }
+    ]
   }
 }
