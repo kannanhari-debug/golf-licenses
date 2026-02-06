@@ -1,0 +1,16 @@
+{
+  "attempts": [
+    {
+      "device_id": "111111111111111",
+      "status": "UNAUTHORIZED",
+      "action": "login",
+      "timestamp": "2026-02-06T22:10:10.129Z",
+      "date": "2026-02-06",
+      "start_time": "2026-02-06T22:10:09.970Z",
+      "end_time": null,
+      "duration": 0
+    }
+  ],
+  "last_attempt": "2026-02-06T22:10:10.129Z",
+  "total_attempts": 1
+}
