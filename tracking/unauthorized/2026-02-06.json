@@ -4,5 +4,12 @@
     "timestamp": "2026-02-06T17:34:51.530Z",
     "type": "unauthorized",
     "user_agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Mobile Safari/537.36"
+  },
+  {
+    "device_id": "739414467890316",
+    "username": "unknown",
+    "timestamp": "2026-02-06T18:09:14.182Z",
+    "type": "unauthorized",
+    "date": "2026-02-06"
   }
 ]
