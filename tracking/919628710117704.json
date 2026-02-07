@@ -19,9 +19,19 @@
       "start_time": "2026-02-07T00:24:12.801Z",
       "end_time": null,
       "duration": 0
+    },
+    {
+      "device_id": "919628710117704",
+      "status": "ACTIVE",
+      "action": "logout",
+      "timestamp": "2026-02-07T00:24:29.858Z",
+      "date": "2026-02-07",
+      "start_time": "2026-02-07T00:24:12.801Z",
+      "end_time": "2026-02-07T00:24:29.858Z",
+      "duration": 0
     }
   ],
   "total_time": 0,
-  "last_used": "2026-02-07T00:24:12.847Z",
-  "today_count": 2
+  "last_used": "2026-02-07T00:24:29.858Z",
+  "today_count": 3
 }
