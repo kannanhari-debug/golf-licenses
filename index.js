@@ -92,6 +92,74 @@ function checkLicense(device_id) {
 app.get("/", (req, res) => {
   res.type("text/plain").send("GG License backend is running");
 });
+
+// QUICK TEST (browser/GG friendly)
+// Example:
+// /check?device_id=739414467890316
+app.get("/check", (req, res) => {
+  const device_id = (req.query.device_id || "").toString().trim();
+  if (!device_id) return res.status(400).json({ status: "error", message: "device_id required" });
+
+  const result = checkLicense(device_id);
+
+  const logs = safeReadJson(LOGS_PATH, []);
+  logs.push({
+    type: "check",
+    device_id: deviceForLog(device_id),
+    result: result.status,
+    time: nowIso(),
+    ip: getIp(req)
+  });
+  safeWriteJson(LOGS_PATH, logs);
+
+  return res.json(result);
+});
+// QUICK EVENT TEST (browser/GG friendly)
+// /event?device_id=XXX&event=start&script=lite
+// /event?device_id=XXX&event=end&duration=1
+app.get("/event", (req, res) => {
+  const device_id = (req.query.device_id || "").toString().trim();
+  const event = (req.query.event || "").toString().trim().toLowerCase();
+  const script = (req.query.script || "").toString().trim().toLowerCase();
+  const duration = Number(req.query.duration);
+
+  if (!device_id) return res.status(400).json({ status: "error", message: "device_id required" });
+  if (event !== "start" && event !== "end") {
+    return res.status(400).json({ status: "error", message: "event must be start or end" });
+  }
+
+  const lic = checkLicense(device_id);
+  const ip = getIp(req);
+
+  const logRecord = {
+    type: "event",
+    event,
+    result: lic.status,
+    device_id: deviceForLog(device_id),
+    time: nowIso(),
+    ip
+  };
+
+  if (lic.status === "valid" || lic.status === "expired") {
+    logRecord.username = lic.username;
+    logRecord.level = lic.level;
+    logRecord.expiry = lic.expiry;
+  }
+
+  if (lic.status === "valid") {
+    if (script) logRecord.script = script;
+    if (event === "end") logRecord.duration = Number.isFinite(duration) ? duration : 0;
+  }
+
+  const logs = safeReadJson(LOGS_PATH, []);
+  logs.push(logRecord);
+  safeWriteJson(LOGS_PATH, logs);
+
+  console.log("EVENT:", logRecord);
+
+  return res.json({ status: "ok" });
+});
+
 // QUICK TEST (browser-friendly)
 // Example:
 // https://golf-licenses-production.up.railway.app/check?device_id=739414467890316
