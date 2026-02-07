@@ -84,16 +84,6 @@ function getRequestMeta(req) {
 // HEALTH CHECK
 // ----------------
 app.get("/", async (req, res) => {
-  try {
-    await pool.query(
-      `INSERT INTO events (device_id, event, result, created_at)
-       VALUES ($1, $2, $3, now())`,
-      ["BROWSER_TEST", "ping", "ok"]
-    );
-  } catch (e) {
-    console.log("log failed:", e.message);
-  }
-
   res.json({
     status: "ok",
     service: "license-server",
