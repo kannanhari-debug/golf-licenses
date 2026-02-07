@@ -1,19 +1,18 @@
 // ================================
-// License Server (CommonJS)
-// Old GameGuardian compatible (GET /check + GET /event)
-// Keep POST endpoints for future admin/tools
+// Golf License Server (EVENT->SESSION MAPPING)
+// CommonJS (.cjs) – SAFE FOR Railway
 // ================================
 
 const express = require("express");
 const cors = require("cors");
-const crypto = require("crypto");
 const { Pool } = require("pg");
+const crypto = require("crypto");
 
 // ----------------
 // ENV CHECK
 // ----------------
 if (!process.env.DATABASE_URL) {
-  console.error("❌ DATABASE_URL is missing");
+  console.error("❌ DATABASE_URL is missing in Railway variables");
   process.exit(1);
 }
 
@@ -23,9 +22,6 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 5,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 10_000,
 });
 
 // ----------------
@@ -33,298 +29,284 @@ const pool = new Pool({
 // ----------------
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "256kb" }));
+app.use(express.json());
 
-// ----------------
-// HELPERS
-// ----------------
-function safeText(v, max = 200) {
-  if (v === undefined || v === null) return null;
-  const s = String(v);
-  return s.length > max ? s.slice(0, max) : s;
+function nowIso() {
+  return new Date().toISOString();
 }
 
-function getRequestMeta(req) {
+function safeInt(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function newSessionId() {
+  return crypto.randomBytes(9).toString("hex"); // 18 chars
+}
+
+// ----------------
+// EVENT LOGGER
+// ----------------
+async function logEvent(device_id, event, result, req, data = null) {
   const ip =
-    (req.headers["x-forwarded-for"] && req.headers["x-forwarded-for"].toString().split(",")[0].trim()) ||
+    (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
     req.socket?.remoteAddress ||
     null;
 
-  const user_agent = req.headers["user-agent"] || null;
-  return { ip, user_agent };
+  const ua = req.headers["user-agent"] || null;
+
+  await pool.query(
+    `INSERT INTO events (device_id, event, result, ip, user_agent, data)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [device_id, event, result, ip, ua, data]
+  );
 }
 
-function toJsonbParam(obj) {
-  // pg will send JS object as JSON if we stringify; we cast to jsonb in SQL
-  if (obj === undefined) return null;
-  if (obj === null) return null;
-  return JSON.stringify(obj);
-}
-
-async function logEvent(device_id, event, result, extra = {}) {
-  try {
-    const ip = (extra && extra.ip) || null;
-    const user_agent = (extra && extra.user_agent) || null;
-    const data = extra && extra.data ? extra.data : null;
-
-    await pool.query(
-      `INSERT INTO events (device_id, event, result, ip, user_agent, data)
-       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-      [
-        safeText(device_id, 200),
-        safeText(event, 50),
-        safeText(result, 50),
-        safeText(ip, 64),
-        safeText(user_agent, 300),
-        toJsonbParam(data),
-      ]
-    );
-  } catch (e) {
-    console.error("⚠️ logEvent failed:", e.message);
-  }
-}
-
-// Treat DATE expiry as valid through end-of-day UTC
-function isExpired(dateString /* YYYY-MM-DD */) {
-  if (!dateString) return true;
-  const exp = new Date(String(dateString) + "T23:59:59Z");
-  return exp.getTime() < Date.now();
-}
-
-async function checkLicenseByDeviceId(device_id, meta) {
-  if (!device_id) {
-    await logEvent(null, "check", "error_missing_device", meta);
-    return { status: "unauthorised" };
-  }
-
-  const result = await pool.query(
-    `SELECT device_id, username, level, expiry, status
-     FROM licenses
+// ----------------
+// SESSION HELPERS (event=start/end -> sessions table)
+// ----------------
+async function abortRunningSessions(device_id, reason = "aborted") {
+  // Close any running sessions for this device (crash/unknown)
+  // duration_sec = now - start_time
+  await pool.query(
+    `UPDATE sessions
+       SET end_time = now(),
+           status = $2,
+           duration_sec = EXTRACT(EPOCH FROM (now() - start_time))::int
      WHERE device_id = $1
-     LIMIT 1`,
+       AND status = 'running'
+       AND end_time IS NULL`,
+    [device_id, reason]
+  );
+}
+
+async function startSessionFromEvent(device_id, level) {
+  // mark old running sessions as aborted (if any)
+  await abortRunningSessions(device_id, "aborted");
+
+  const sid = newSessionId();
+
+  await pool.query(
+    `INSERT INTO sessions (session_id, device_id, level, start_time, status)
+     VALUES ($1,$2,$3, now(), 'running')`,
+    [sid, device_id, level || "unknown"]
+  );
+
+  return sid;
+}
+
+async function endSessionFromEvent(device_id, durationSec) {
+  // Close the latest running session
+  // If durationSec provided, trust it; else compute from timestamps
+  const q = await pool.query(
+    `SELECT id, start_time
+       FROM sessions
+      WHERE device_id = $1
+        AND status = 'running'
+        AND end_time IS NULL
+   ORDER BY start_time DESC
+      LIMIT 1`,
     [device_id]
   );
 
-  if (result.rows.length === 0) {
-    await logEvent(device_id, "check", "unauthorised", meta);
-    return { status: "unauthorised" };
+  if (q.rows.length === 0) return { closed: false };
+
+  const row = q.rows[0];
+
+  if (durationSec == null) {
+    // compute duration on server
+    await pool.query(
+      `UPDATE sessions
+          SET end_time = now(),
+              status = 'ended',
+              duration_sec = EXTRACT(EPOCH FROM (now() - start_time))::int
+        WHERE id = $1`,
+      [row.id]
+    );
+  } else {
+    await pool.query(
+      `UPDATE sessions
+          SET end_time = now(),
+              status = 'ended',
+              duration_sec = $2
+        WHERE id = $1`,
+      [row.id, durationSec]
+    );
   }
 
-  const lic = result.rows[0];
-
-  if (String(lic.status || "").toLowerCase() !== "active") {
-    await logEvent(device_id, "check", "inactive", meta);
-    // for GG you wanted "no access" style; we can still return inactive if you want.
-    return {
-      status: "inactive",
-      username: lic.username,
-      level: lic.level,
-      expiry: lic.expiry,
-    };
-  }
-
-  if (isExpired(lic.expiry)) {
-    await logEvent(device_id, "check", "expired", meta);
-    return {
-      status: "expired",
-      username: lic.username,
-      level: lic.level,
-      expiry: lic.expiry,
-    };
-  }
-
-  await logEvent(device_id, "check", "valid", meta);
-  return {
-    status: "valid",
-    username: lic.username,
-    level: lic.level,
-    expiry: lic.expiry,
-  };
+  return { closed: true };
 }
 
 // ----------------
 // HEALTH CHECK
 // ----------------
-app.get("/", async (req, res) => {
+app.get("/", (req, res) => {
   res.json({
     status: "ok",
     service: "license-server",
-    time: new Date().toISOString(),
+    time: nowIso(),
   });
 });
 
 // ----------------
-// LICENSE CHECK (GET for OLD GG)
-// Example: /check?device_id=123
+// LICENSE CHECK (GET for old GG)
+// /check?device_id=123
 // ----------------
 app.get("/check", async (req, res) => {
-  const { ip, user_agent } = getRequestMeta(req);
-  const device_id = safeText(req.query.device_id, 200);
-
   try {
-    const out = await checkLicenseByDeviceId(device_id, { ip, user_agent });
-    res.json(out);
+    const device_id = (req.query.device_id || "").toString().trim();
+    if (!device_id) return res.status(400).json({ error: "device_id required" });
+
+    const result = await pool.query(
+      `SELECT device_id, username, level, expiry, status
+         FROM licenses
+        WHERE device_id = $1
+        LIMIT 1`,
+      [device_id]
+    );
+
+    if (result.rows.length === 0) {
+      await logEvent(device_id, "check", "unauthorised", req);
+      return res.json({ status: "unauthorised" });
+    }
+
+    const lic = result.rows[0];
+    const today = new Date();
+
+    if (lic.status !== "active") {
+      await logEvent(device_id, "check", "inactive", req, { lic_status: lic.status });
+      return res.json({ status: "inactive" });
+    }
+
+    if (lic.expiry && new Date(lic.expiry) < today) {
+      await logEvent(device_id, "check", "expired", req, { expiry: lic.expiry });
+      return res.json({
+        status: "expired",
+        username: lic.username,
+        level: lic.level,
+        expiry: lic.expiry,
+      });
+    }
+
+    await logEvent(device_id, "check", "valid", req, { level: lic.level, expiry: lic.expiry });
+
+    return res.json({
+      status: "valid",
+      username: lic.username,
+      level: lic.level,
+      expiry: lic.expiry,
+    });
   } catch (err) {
-    console.error("❌ GET /check error:", err.message);
-    // fail closed = unauthorised
-    res.json({ status: "unauthorised" });
+    console.error("❌ /check error:", err);
+    return res.status(500).json({ error: "server_error" });
   }
 });
 
 // ----------------
-// LICENSE CHECK (POST for future tools)
-// body: { device_id: "..." }
-// ----------------
-app.post("/check", async (req, res) => {
-  const { ip, user_agent } = getRequestMeta(req);
-  const device_id = safeText(req.body?.device_id, 200);
-
-  try {
-    const out = await checkLicenseByDeviceId(device_id, { ip, user_agent });
-    res.json(out);
-  } catch (err) {
-    console.error("❌ POST /check error:", err.message);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// ----------------
-// EVENT LOGGING (GET for OLD GG)
-// Example:
-// /event?device_id=123&event=start&script=lite
-// /event?device_id=123&event=end&duration=55&script=premium
+// EVENT ENDPOINT (GET for old GG)
+// /event?device_id=123&event=start&script=premium
+// /event?device_id=123&event=end&duration=25&script=premium
 // ----------------
 app.get("/event", async (req, res) => {
-  const { ip, user_agent } = getRequestMeta(req);
+  try {
+    const device_id = (req.query.device_id || "").toString().trim();
+    const event = (req.query.event || "").toString().trim().toLowerCase();
+    const script = (req.query.script || "").toString().trim() || null;
+    const duration = safeInt(req.query.duration);
 
-  const device_id = safeText(req.query.device_id, 200);
-  const event = safeText(req.query.event || "event", 50);
-  const duration = req.query.duration !== undefined ? Number(req.query.duration) : null;
-  const script = safeText(req.query.script, 20);
+    if (!device_id || !event) {
+      return res.status(400).json({ error: "device_id and event required" });
+    }
 
-  if (!device_id) return res.json({ ok: false });
+    // Log ALL events
+    await logEvent(device_id, event, "ok", req, { script, duration });
 
-  const data = {
-    duration: Number.isFinite(duration) ? Math.max(0, Math.floor(duration)) : null,
-    script: script || null,
-  };
+    // Map start/end into sessions automatically
+    if (event === "start") {
+      const sid = await startSessionFromEvent(device_id, script || "unknown");
+      return res.json({ status: "ok", mapped: "session_start", session_id: sid });
+    }
 
-  await logEvent(device_id, event, "ok", { ip, user_agent, data });
-  return res.json({ ok: true });
+    if (event === "end") {
+      const out = await endSessionFromEvent(device_id, duration);
+      return res.json({ status: "ok", mapped: "session_end", closed: out.closed });
+    }
+
+    // other events just logged
+    return res.json({ status: "ok" });
+  } catch (err) {
+    console.error("❌ /event error:", err);
+    return res.status(500).json({ error: "server_error" });
+  }
 });
 
 // ----------------
-// GENERIC EVENT (POST for future tools)
-// body: { device_id, event, result, data }
+// VIEW LOGS IN BROWSER (simple)
+// /events?device_id=123
+// /sessions?device_id=123
 // ----------------
-app.post("/event", async (req, res) => {
-  const { ip, user_agent } = getRequestMeta(req);
-
+app.get("/events", async (req, res) => {
   try {
-    const device_id = safeText(req.body?.device_id, 200);
-    const event = safeText(req.body?.event || "event", 50);
-    const result = safeText(req.body?.result || "ok", 50);
-    const data = req.body?.data ?? null;
+    const device_id = (req.query.device_id || "").toString().trim();
+    const limit = Math.min(safeInt(req.query.limit) || 200, 1000);
 
-    if (!device_id) return res.status(400).json({ error: "device_id required" });
+    const q = device_id
+      ? await pool.query(
+          `SELECT id, device_id, event, result, created_at
+             FROM events
+            WHERE device_id = $1
+         ORDER BY created_at DESC
+            LIMIT $2`,
+          [device_id, limit]
+        )
+      : await pool.query(
+          `SELECT id, device_id, event, result, created_at
+             FROM events
+         ORDER BY created_at DESC
+            LIMIT $1`,
+          [limit]
+        );
 
-    await logEvent(device_id, event, result, { ip, user_agent, data });
-    res.json({ status: "logged" });
+    res.json(q.rows);
   } catch (err) {
-    console.error("❌ POST /event error:", err.message);
+    console.error("❌ /events error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.get("/sessions", async (req, res) => {
+  try {
+    const device_id = (req.query.device_id || "").toString().trim();
+    const limit = Math.min(safeInt(req.query.limit) || 200, 1000);
+
+    const q = device_id
+      ? await pool.query(
+          `SELECT session_id, device_id, level, start_time, end_time, status, duration_sec
+             FROM sessions
+            WHERE device_id = $1
+         ORDER BY start_time DESC
+            LIMIT $2`,
+          [device_id, limit]
+        )
+      : await pool.query(
+          `SELECT session_id, device_id, level, start_time, end_time, status, duration_sec
+             FROM sessions
+         ORDER BY start_time DESC
+            LIMIT $1`,
+          [limit]
+        );
+
+    res.json(q.rows);
+  } catch (err) {
+    console.error("❌ /sessions error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });
 
 // ----------------
-// SESSION START (POST)
-// body: { session_id?, device_id, level }
-// (Not required for your old GG wrapper; you are using /event start/end.)
-// Keeping it for future.
-// ----------------
-app.post("/start", async (req, res) => {
-  const { ip, user_agent } = getRequestMeta(req);
-
-  try {
-    const device_id = safeText(req.body?.device_id, 200);
-    const level = safeText(req.body?.level, 20);
-
-    if (!device_id) return res.status(400).json({ error: "device_id required" });
-
-    const sid =
-      req.body?.session_id && String(req.body.session_id).trim()
-        ? String(req.body.session_id).trim()
-        : crypto.randomUUID();
-
-    await pool.query(
-      `INSERT INTO sessions (session_id, device_id, level, start_time, status, ip, user_agent)
-       VALUES ($1, $2, $3, now(), 'running', $4, $5)`,
-      [sid, device_id, level, safeText(ip, 64), safeText(user_agent, 300)]
-    );
-
-    await logEvent(device_id, "start", "ok", { ip, user_agent, data: { session_id: sid, level } });
-    res.json({ status: "started", session_id: sid });
-  } catch (err) {
-    console.error("❌ /start error:", err.message);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// ----------------
-// SESSION END (POST)
-// body: { session_id, device_id }
-// ----------------
-app.post("/end", async (req, res) => {
-  const { ip, user_agent } = getRequestMeta(req);
-
-  try {
-    const device_id = safeText(req.body?.device_id, 200);
-    const session_id = safeText(req.body?.session_id, 200);
-
-    if (!device_id) return res.status(400).json({ error: "device_id required" });
-    if (!session_id) return res.status(400).json({ error: "session_id required" });
-
-    const r = await pool.query(
-      `UPDATE sessions
-       SET end_time = now(),
-           status = 'ended',
-           duration_sec = EXTRACT(EPOCH FROM (now() - start_time))::int
-       WHERE session_id = $1 AND device_id = $2 AND status = 'running'
-       RETURNING duration_sec`,
-      [session_id, device_id]
-    );
-
-    const duration = r.rows[0]?.duration_sec ?? null;
-
-    await logEvent(device_id, "end", "ok", { ip, user_agent, data: { session_id, duration_sec: duration } });
-    res.json({ status: "ended", duration_sec: duration });
-  } catch (err) {
-    console.error("❌ /end error:", err.message);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// ----------------
-// QUICK VIEW (for testing in browser)
-// ----------------
-app.get("/recent", async (req, res) => {
-  try {
-    const r = await pool.query(
-      `SELECT id, device_id, event, result, created_at
-       FROM events
-       ORDER BY id DESC
-       LIMIT 50`
-    );
-    res.json(r.rows);
-  } catch (err) {
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// ----------------
-// START SERVER
+// PORT + START
 // ----------------
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
-  console.log("✅ Server listening on port", PORT);
+  console.log(`✅ Server listening on port ${PORT}`);
 });
