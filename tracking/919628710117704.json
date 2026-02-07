@@ -1,0 +1,17 @@
+{
+  "sessions": [
+    {
+      "device_id": "919628710117704",
+      "status": "ACTIVE",
+      "action": "login",
+      "timestamp": "2026-02-07T00:22:55.378Z",
+      "date": "2026-02-07",
+      "start_time": "2026-02-07T00:22:55.234Z",
+      "end_time": null,
+      "duration": 0
+    }
+  ],
+  "total_time": 0,
+  "last_used": "2026-02-07T00:22:55.378Z",
+  "today_count": 1
+}
