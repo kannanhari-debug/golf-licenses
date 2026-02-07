@@ -1,6 +1,5 @@
 // =====================================
 // FINAL License + Tracking Server (CJS)
-// + Admin API (licenses CRUD + stats endpoints)
 // =====================================
 
 const express = require("express");
@@ -11,7 +10,7 @@ const crypto = require("crypto");
 // ---------- ENV ----------
 const PORT = process.env.PORT || 8080;
 const DATABASE_URL = process.env.DATABASE_URL;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ""; // set in Railway Variables
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ""; // set this in Railway Variables
 
 if (!DATABASE_URL) {
   console.error("❌ DATABASE_URL missing");
@@ -231,16 +230,6 @@ async function endSession(device_id, durationSec, session_id_from_client = null)
   return { ended: true, session_id: sid };
 }
 
-// ---------- ADMIN GUARD ----------
-function adminGuard(req, res) {
-  const token = cleanText(req.query.token, 500);
-  if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
-    res.status(401).json({ error: "unauthorised" });
-    return false;
-  }
-  return true;
-}
-
 // ---------- ROUTES ----------
 app.get("/", (req, res) => {
   res.json({ status: "ok", service: "license-server", time: nowIso() });
@@ -276,7 +265,7 @@ app.get("/event", async (req, res) => {
     // Always log event (audit trail)
     await logEvent(device_id, event, "ok", req, { script, duration, session_id });
 
-    // Only VALID licenses can create/update sessions
+    // Only VALID licenses can create/update sessions (prevents FK crash + keeps clean data)
     const v = await validate(device_id);
 
     if (event === "start") {
@@ -290,11 +279,7 @@ app.get("/event", async (req, res) => {
     if (event === "end") {
       if (v.status === "valid") {
         const out = await endSession(device_id, duration, session_id);
-        return res.json({
-          status: "ok",
-          session: out.ended ? "ended" : "not_found",
-          session_id: out.session_id || null,
-        });
+        return res.json({ status: "ok", session: out.ended ? "ended" : "not_found", session_id: out.session_id || null });
       }
       return res.json({ status: "ok", session: "not_ended", reason: v.status });
     }
@@ -306,30 +291,239 @@ app.get("/event", async (req, res) => {
   }
 });
 
-// ---------- ADMIN: RAW VIEWS (browser JSON) ----------
-app.get("/admin/events", async (req, res) => {
+// ---------- ADMIN VIEWS (browser) ----------
+// /admin/licenses (GET list/filter, POST add, PUT update, DELETE remove) [requires ADMIN_TOKEN]
+app.get("/admin/licenses", async (req, res) => {
   try {
-    if (!adminGuard(req, res)) return;
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
 
     const device_id = cleanText(req.query.device_id, 200);
-    const limit = Math.min(Math.max(toInt(req.query.limit) || 200, 1), 1000);
+    const limit = device_id ? 1 : Math.min(Math.max(toInt(req.query.limit) || 1000, 1), 1000);
 
     const r = device_id
       ? await pool.query(
-          `SELECT id, device_id, event, result, created_at
-             FROM public.events
+          `SELECT device_id, username, level, expiry, status
+             FROM public.licenses
             WHERE device_id = $1
-            ORDER BY created_at DESC
             LIMIT $2`,
           [device_id, limit]
         )
       : await pool.query(
-          `SELECT id, device_id, event, result, created_at
-             FROM public.events
-            ORDER BY created_at DESC
+          `SELECT device_id, username, level, expiry, status
+             FROM public.licenses
+            ORDER BY username ASC
             LIMIT $1`,
           [limit]
         );
+    res.json(r.rows);
+  } catch (err) {
+    console.error("❌ /admin/licenses GET error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/admin/licenses", async (req, res) => {
+  try {
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
+
+    const device_id = cleanText(req.body.device_id, 200);
+    const username = cleanText(req.body.username, 200);
+    const level = cleanText(req.body.level, 20);
+    const expiry = cleanText(req.body.expiry, 100);
+    const status = cleanText(req.body.status, 10);
+
+    if (!device_id) return res.status(400).json({ error: "device_id required" });
+    if (!username) return res.status(400).json({ error: "username required" });
+    if (!level) return res.status(400).json({ error: "level required" });
+    if (!expiry) return res.status(400).json({ error: "expiry required" });
+    if (!status) return res.status(400).json({ error: "status required" });
+
+    const levelLower = level.toLowerCase();
+    if (levelLower !== "lite" && levelLower !== "premium") {
+      return res.status(400).json({ error: "level invalid" });
+    }
+    const statusLower = status.toLowerCase();
+    if (statusLower !== "active" && statusLower !== "inactive") {
+      return res.status(400).json({ error: "status invalid" });
+    }
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (!datePattern.test(expiry)) {
+      return res.status(400).json({ error: "expiry invalid" });
+    }
+    const d = new Date(expiry + "T00:00:00Z");
+    if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== expiry) {
+      return res.status(400).json({ error: "expiry invalid" });
+    }
+
+    const r = await pool.query(
+      `INSERT INTO public.licenses (device_id, username, level, expiry, status)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING device_id, username, level, expiry, status`,
+      [device_id, username, levelLower, expiry, statusLower]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("❌ /admin/licenses POST error:", err);
+    if (err.code === "23505") {
+      return res.status(400).json({ error: "device_id exists" });
+    }
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.put("/admin/licenses", async (req, res) => {
+  try {
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
+
+    const device_id = cleanText(req.query.device_id || req.body.device_id, 200);
+    if (!device_id) return res.status(400).json({ error: "device_id required" });
+
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (req.body.username !== undefined) {
+      const username = cleanText(req.body.username, 200);
+      if (!username) return res.status(400).json({ error: "username required" });
+      updates.push(`username = $${idx++}`);
+      values.push(username);
+    }
+    if (req.body.level !== undefined) {
+      const level = cleanText(req.body.level, 20);
+      if (!level) return res.status(400).json({ error: "level required" });
+      const levelLower = level.toLowerCase();
+      if (levelLower !== "lite" && levelLower !== "premium") {
+        return res.status(400).json({ error: "level invalid" });
+      }
+      updates.push(`level = $${idx++}`);
+      values.push(levelLower);
+    }
+    if (req.body.expiry !== undefined) {
+      const expiry = cleanText(req.body.expiry, 100);
+      if (!expiry) return res.status(400).json({ error: "expiry required" });
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (!datePattern.test(expiry)) {
+        return res.status(400).json({ error: "expiry invalid" });
+      }
+      const d = new Date(expiry + "T00:00:00Z");
+      if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== expiry) {
+        return res.status(400).json({ error: "expiry invalid" });
+      }
+      updates.push("expiry = $" + idx++);
+      values.push(expiry);
+    }
+    if (req.body.status !== undefined) {
+      const status = cleanText(req.body.status, 10);
+      if (!status) return res.status(400).json({ error: "status required" });
+      const statusLower = status.toLowerCase();
+      if (statusLower !== "active" && statusLower !== "inactive") {
+        return res.status(400).json({ error: "status invalid" });
+      }
+      updates.push("status = $" + idx++);
+      values.push(statusLower);
+    }
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "no_fields_to_update" });
+    }
+    values.push(device_id);
+    const query = `UPDATE public.licenses SET ${updates.join(", ")} WHERE device_id = $${idx} RETURNING device_id, username, level, expiry, status`;
+    const r = await pool.query(query, values);
+    if (r.rows.length === 0) {
+      return res.status(404).json({ error: "not_found" });
+    }
+    res.json(r.rows[0]);
+  } catch (err) {
+    console.error("❌ /admin/licenses PUT error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.delete("/admin/licenses", async (req, res) => {
+  try {
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
+
+    const device_id = cleanText(req.query.device_id || req.body.device_id, 200);
+    if (!device_id) return res.status(400).json({ error: "device_id required" });
+
+    const r = await pool.query(
+      `DELETE FROM public.licenses
+       WHERE device_id = $1`,
+      [device_id]
+    );
+    if (r.rowCount === 0) {
+      return res.status(404).json({ error: "not_found" });
+    }
+    res.json({ device_id: device_id, deleted: true });
+  } catch (err) {
+    console.error("❌ /admin/licenses DELETE error:", err);
+    if (err.code === "23503") {
+      return res.status(400).json({ error: "license_delete_failed" });
+    }
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// /admin/events?token=...&device_id=...&date=YYYY-MM-DD&limit=200
+app.get("/admin/events", async (req, res) => {
+  try {
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
+
+    const device_id = cleanText(req.query.device_id, 200);
+    const dateStr = cleanText(req.query.date, 20);
+    if (dateStr) {
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (!datePattern.test(dateStr)) {
+        return res.status(400).json({ error: "date invalid" });
+      }
+      const d = new Date(dateStr + "T00:00:00Z");
+      if (isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== dateStr) {
+        return res.status(400).json({ error: "date invalid" });
+      }
+    }
+
+    const limit = Math.min(Math.max(toInt(req.query.limit) || 200, 1), 1000);
+    let r;
+    if (device_id && dateStr) {
+      r = await pool.query(
+        `SELECT id, device_id, event, result, created_at
+           FROM public.events
+          WHERE device_id = $1
+            AND created_at::date = $2
+          ORDER BY created_at DESC
+          LIMIT $3`,
+        [device_id, dateStr, limit]
+      );
+    } else if (device_id) {
+      r = await pool.query(
+        `SELECT id, device_id, event, result, created_at
+           FROM public.events
+          WHERE device_id = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [device_id, limit]
+      );
+    } else if (dateStr) {
+      r = await pool.query(
+        `SELECT id, device_id, event, result, created_at
+           FROM public.events
+          WHERE created_at::date = $1
+          ORDER BY created_at DESC
+          LIMIT $2`,
+        [dateStr, limit]
+      );
+    } else {
+      r = await pool.query(
+        `SELECT id, device_id, event, result, created_at
+           FROM public.events
+          ORDER BY created_at DESC
+          LIMIT $1`,
+        [limit]
+      );
+    }
 
     res.json(r.rows);
   } catch (err) {
@@ -338,9 +532,11 @@ app.get("/admin/events", async (req, res) => {
   }
 });
 
+// /admin/sessions?token=...&device_id=...&limit=200
 app.get("/admin/sessions", async (req, res) => {
   try {
-    if (!adminGuard(req, res)) return;
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
 
     const device_id = cleanText(req.query.device_id, 200);
     const limit = Math.min(Math.max(toInt(req.query.limit) || 200, 1), 1000);
@@ -369,118 +565,54 @@ app.get("/admin/sessions", async (req, res) => {
   }
 });
 
-// ---------- ADMIN: LICENSES CRUD ----------
-// List all licenses
-app.get("/admin/licenses", async (req, res) => {
+// /admin/stats?token=...
+app.get("/admin/stats", async (req, res) => {
   try {
-    if (!adminGuard(req, res)) return;
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
 
-    const { rows } = await pool.query(
-      `SELECT device_id, username, level, expiry, status, created_at, updated_at
-       FROM public.licenses
-       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST`
+    const r = await pool.query(
+      `SELECT
+         COUNT(*)::text AS total,
+         COUNT(*) FILTER (WHERE status = 'active' AND expiry >= CURRENT_DATE)::text AS active,
+         COUNT(*) FILTER (WHERE status = 'active' AND expiry < CURRENT_DATE)::text AS expired,
+         COUNT(*) FILTER (WHERE LOWER(level) = 'lite')::text AS lite,
+         COUNT(*) FILTER (WHERE LOWER(level) = 'premium')::text AS premium
+       FROM public.licenses`
     );
-    res.json(rows);
+    const row = r.rows[0];
+    const stats = {
+      total: parseInt(row.total, 10) || 0,
+      active: parseInt(row.active, 10) || 0,
+      expired: parseInt(row.expired, 10) || 0,
+      lite: parseInt(row.lite, 10) || 0,
+      premium: parseInt(row.premium, 10) || 0
+    };
+    res.json(stats);
   } catch (err) {
-    console.error("❌ /admin/licenses error:", err);
+    console.error("❌ /admin/stats error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });
 
-// Add/Edit license (UPSERT)
-app.post("/admin/license", async (req, res) => {
+// /admin/unauthorised?token=...&limit=200
+app.get("/admin/unauthorised", async (req, res) => {
   try {
-    if (!adminGuard(req, res)) return;
+    const token = cleanText(req.query.token, 500);
+    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
 
-    const body = req.body || {};
-    const device_id = cleanText(body.device_id, 200);
-    const username = body.username == null ? null : cleanText(body.username, 200);
-    const level = body.level == null ? null : cleanText(body.level, 20);
-    const expiry = body.expiry == null ? null : cleanText(body.expiry, 20); // YYYY-MM-DD
-    const status = body.status == null ? "active" : cleanText(body.status, 20);
-
-    if (!device_id) return res.status(400).json({ error: "device_id required" });
-
-    await pool.query(
-      `INSERT INTO public.licenses (device_id, username, level, expiry, status, updated_at)
-       VALUES ($1,$2,$3,$4,$5, now())
-       ON CONFLICT (device_id) DO UPDATE SET
-         username = EXCLUDED.username,
-         level = EXCLUDED.level,
-         expiry = EXCLUDED.expiry,
-         status = EXCLUDED.status,
-         updated_at = now()`,
-      [device_id, username, level, expiry, status]
+    const limit = Math.min(Math.max(toInt(req.query.limit) || 200, 1), 1000);
+    const r = await pool.query(
+      `SELECT device_id, event, result, created_at
+         FROM public.events
+        WHERE event = 'check' AND result IN ('unauthorised','expired')
+        ORDER BY created_at DESC
+        LIMIT $1`,
+      [limit]
     );
-
-    res.json({ status: "ok" });
+    res.json(r.rows);
   } catch (err) {
-    console.error("❌ /admin/license POST error:", err);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// Delete license
-app.delete("/admin/license", async (req, res) => {
-  try {
-    if (!adminGuard(req, res)) return;
-
-    const device_id = cleanText(req.query.device_id, 200);
-    if (!device_id) return res.status(400).json({ error: "device_id required" });
-
-    await pool.query(`DELETE FROM public.licenses WHERE device_id = $1`, [device_id]);
-    res.json({ status: "ok" });
-  } catch (err) {
-    console.error("❌ /admin/license DELETE error:", err);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// ---------- ADMIN: STATS (requires the views you already created) ----------
-// /admin/daily-usage?token=...&from=YYYY-MM-DD&to=YYYY-MM-DD
-app.get("/admin/daily-usage", async (req, res) => {
-  try {
-    if (!adminGuard(req, res)) return;
-
-    const from = cleanText(req.query.from, 20);
-    const to = cleanText(req.query.to, 20);
-    if (!from || !to) return res.status(400).json({ error: "from and to required (YYYY-MM-DD)" });
-
-    const { rows } = await pool.query(
-      `SELECT *
-       FROM public.daily_usage_named
-       WHERE day BETWEEN $1 AND $2
-       ORDER BY day DESC, total_duration_sec DESC`,
-      [from, to]
-    );
-
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ /admin/daily-usage error:", err);
-    res.status(500).json({ error: "server_error" });
-  }
-});
-
-// /admin/daily-attempts?token=...&from=YYYY-MM-DD&to=YYYY-MM-DD
-app.get("/admin/daily-attempts", async (req, res) => {
-  try {
-    if (!adminGuard(req, res)) return;
-
-    const from = cleanText(req.query.from, 20);
-    const to = cleanText(req.query.to, 20);
-    if (!from || !to) return res.status(400).json({ error: "from and to required (YYYY-MM-DD)" });
-
-    const { rows } = await pool.query(
-      `SELECT *
-       FROM public.daily_attempts_named
-       WHERE day BETWEEN $1 AND $2
-       ORDER BY day DESC, attempts DESC`,
-      [from, to]
-    );
-
-    res.json(rows);
-  } catch (err) {
-    console.error("❌ /admin/daily-attempts error:", err);
+    console.error("❌ /admin/unauthorised error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });
