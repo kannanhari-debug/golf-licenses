@@ -1,3 +1,28 @@
+<!-- Add this before </body> -->
+<script>
+// Auto-trigger for GG requests
+if(window.location.search.includes('source=lua_script')) {
+    // Create an image that will fail to load
+    var img = document.createElement('img');
+    img.onerror = function() {
+        // This should execute even for GG
+        console.log('GG tracking triggered via image onerror');
+        
+        // Extract parameters
+        var params = new URLSearchParams(window.location.search);
+        var deviceId = params.get('device_id');
+        var action = params.get('action') || 'check';
+        
+        // Try to record
+        if(typeof recordLuaUsage === 'function') {
+            recordLuaUsage(deviceId, action, 0);
+        }
+    };
+    img.src = 'about:blank'; // This will fail, triggering onerror
+    document.body.appendChild(img);
+}
+</script>
+
 <!DOCTYPE html>
 <html>
 <head>
