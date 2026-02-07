@@ -1,5 +1,6 @@
 // =====================================
 // FINAL License + Tracking Server (CJS)
+// + Admin API (licenses CRUD + stats endpoints)
 // =====================================
 
 const express = require("express");
@@ -10,7 +11,7 @@ const crypto = require("crypto");
 // ---------- ENV ----------
 const PORT = process.env.PORT || 8080;
 const DATABASE_URL = process.env.DATABASE_URL;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ""; // set this in Railway Variables
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || ""; // set in Railway Variables
 
 if (!DATABASE_URL) {
   console.error("❌ DATABASE_URL missing");
@@ -230,6 +231,16 @@ async function endSession(device_id, durationSec, session_id_from_client = null)
   return { ended: true, session_id: sid };
 }
 
+// ---------- ADMIN GUARD ----------
+function adminGuard(req, res) {
+  const token = cleanText(req.query.token, 500);
+  if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) {
+    res.status(401).json({ error: "unauthorised" });
+    return false;
+  }
+  return true;
+}
+
 // ---------- ROUTES ----------
 app.get("/", (req, res) => {
   res.json({ status: "ok", service: "license-server", time: nowIso() });
@@ -265,7 +276,7 @@ app.get("/event", async (req, res) => {
     // Always log event (audit trail)
     await logEvent(device_id, event, "ok", req, { script, duration, session_id });
 
-    // Only VALID licenses can create/update sessions (prevents FK crash + keeps clean data)
+    // Only VALID licenses can create/update sessions
     const v = await validate(device_id);
 
     if (event === "start") {
@@ -279,7 +290,11 @@ app.get("/event", async (req, res) => {
     if (event === "end") {
       if (v.status === "valid") {
         const out = await endSession(device_id, duration, session_id);
-        return res.json({ status: "ok", session: out.ended ? "ended" : "not_found", session_id: out.session_id || null });
+        return res.json({
+          status: "ok",
+          session: out.ended ? "ended" : "not_found",
+          session_id: out.session_id || null,
+        });
       }
       return res.json({ status: "ok", session: "not_ended", reason: v.status });
     }
@@ -291,12 +306,10 @@ app.get("/event", async (req, res) => {
   }
 });
 
-// ---------- ADMIN VIEWS (browser) ----------
-// /admin/events?token=...&device_id=...&limit=200
+// ---------- ADMIN: RAW VIEWS (browser JSON) ----------
 app.get("/admin/events", async (req, res) => {
   try {
-    const token = cleanText(req.query.token, 500);
-    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
+    if (!adminGuard(req, res)) return;
 
     const device_id = cleanText(req.query.device_id, 200);
     const limit = Math.min(Math.max(toInt(req.query.limit) || 200, 1), 1000);
@@ -325,11 +338,9 @@ app.get("/admin/events", async (req, res) => {
   }
 });
 
-// /admin/sessions?token=...&device_id=...&limit=200
 app.get("/admin/sessions", async (req, res) => {
   try {
-    const token = cleanText(req.query.token, 500);
-    if (!ADMIN_TOKEN || token !== ADMIN_TOKEN) return res.status(401).json({ error: "unauthorised" });
+    if (!adminGuard(req, res)) return;
 
     const device_id = cleanText(req.query.device_id, 200);
     const limit = Math.min(Math.max(toInt(req.query.limit) || 200, 1), 1000);
@@ -354,6 +365,122 @@ app.get("/admin/sessions", async (req, res) => {
     res.json(r.rows);
   } catch (err) {
     console.error("❌ /admin/sessions error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// ---------- ADMIN: LICENSES CRUD ----------
+// List all licenses
+app.get("/admin/licenses", async (req, res) => {
+  try {
+    if (!adminGuard(req, res)) return;
+
+    const { rows } = await pool.query(
+      `SELECT device_id, username, level, expiry, status, created_at, updated_at
+       FROM public.licenses
+       ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /admin/licenses error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// Add/Edit license (UPSERT)
+app.post("/admin/license", async (req, res) => {
+  try {
+    if (!adminGuard(req, res)) return;
+
+    const body = req.body || {};
+    const device_id = cleanText(body.device_id, 200);
+    const username = body.username == null ? null : cleanText(body.username, 200);
+    const level = body.level == null ? null : cleanText(body.level, 20);
+    const expiry = body.expiry == null ? null : cleanText(body.expiry, 20); // YYYY-MM-DD
+    const status = body.status == null ? "active" : cleanText(body.status, 20);
+
+    if (!device_id) return res.status(400).json({ error: "device_id required" });
+
+    await pool.query(
+      `INSERT INTO public.licenses (device_id, username, level, expiry, status, updated_at)
+       VALUES ($1,$2,$3,$4,$5, now())
+       ON CONFLICT (device_id) DO UPDATE SET
+         username = EXCLUDED.username,
+         level = EXCLUDED.level,
+         expiry = EXCLUDED.expiry,
+         status = EXCLUDED.status,
+         updated_at = now()`,
+      [device_id, username, level, expiry, status]
+    );
+
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("❌ /admin/license POST error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// Delete license
+app.delete("/admin/license", async (req, res) => {
+  try {
+    if (!adminGuard(req, res)) return;
+
+    const device_id = cleanText(req.query.device_id, 200);
+    if (!device_id) return res.status(400).json({ error: "device_id required" });
+
+    await pool.query(`DELETE FROM public.licenses WHERE device_id = $1`, [device_id]);
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("❌ /admin/license DELETE error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// ---------- ADMIN: STATS (requires the views you already created) ----------
+// /admin/daily-usage?token=...&from=YYYY-MM-DD&to=YYYY-MM-DD
+app.get("/admin/daily-usage", async (req, res) => {
+  try {
+    if (!adminGuard(req, res)) return;
+
+    const from = cleanText(req.query.from, 20);
+    const to = cleanText(req.query.to, 20);
+    if (!from || !to) return res.status(400).json({ error: "from and to required (YYYY-MM-DD)" });
+
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM public.daily_usage_named
+       WHERE day BETWEEN $1 AND $2
+       ORDER BY day DESC, total_duration_sec DESC`,
+      [from, to]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /admin/daily-usage error:", err);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+// /admin/daily-attempts?token=...&from=YYYY-MM-DD&to=YYYY-MM-DD
+app.get("/admin/daily-attempts", async (req, res) => {
+  try {
+    if (!adminGuard(req, res)) return;
+
+    const from = cleanText(req.query.from, 20);
+    const to = cleanText(req.query.to, 20);
+    if (!from || !to) return res.status(400).json({ error: "from and to required (YYYY-MM-DD)" });
+
+    const { rows } = await pool.query(
+      `SELECT *
+       FROM public.daily_attempts_named
+       WHERE day BETWEEN $1 AND $2
+       ORDER BY day DESC, attempts DESC`,
+      [from, to]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ /admin/daily-attempts error:", err);
     res.status(500).json({ error: "server_error" });
   }
 });
